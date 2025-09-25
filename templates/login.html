@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Login - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="card content-card">
+    <div class="card-body">
+        <h1 class="card-title text-center mb-4">Enter Access Password</h1>
+        <p class="text-center text-muted">Please enter the password to access the voting system.</p>
+        <form method="post">
+            <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" class="form-control" id="password" name="password" required>
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg">Continue</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

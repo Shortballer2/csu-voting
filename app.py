@@ -21,11 +21,13 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 
 # --- Create database tables ---
-# This block is moved here to ensure it runs in production
 with app.app_context():
     db.create_all()
 
 # --- Environment Variables & Constants ---
+# NEW: General access password for voting
+VOTING_PASSWORD = os.getenv("VOTING_PASSWORD")
+
 # Email settings
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
@@ -57,6 +59,15 @@ def send_otp_email(to_email, otp):
         server.send_message(msg)
 
 # --- Decorators ---
+# NEW: Decorator to protect public voting pages
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "is_authenticated" not in session:
+            return redirect(url_for("public_login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def admin_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -67,7 +78,21 @@ def admin_login_required(f):
     return decorated_function
 
 # --- Public Routes ---
+
+# NEW: Public login route
+@app.route("/login", methods=["GET", "POST"])
+def public_login():
+    if request.method == "POST":
+        password = request.form.get("password")
+        if password == VOTING_PASSWORD:
+            session["is_authenticated"] = True
+            return redirect(url_for("index"))
+        else:
+            flash("Incorrect password. Please try again.", "danger")
+    return render_template("login.html")
+
 @app.route("/", methods=["GET", "POST"])
+@login_required # This page is now protected
 def index():
     if request.method == "POST":
         session["year"] = request.form["year"]
@@ -75,6 +100,7 @@ def index():
     return render_template("index.html")
 
 @app.route("/verify_email", methods=["GET", "POST"])
+@login_required # This page is now protected
 def verify_email():
     if "year" not in session:
         return redirect(url_for("index"))
@@ -110,6 +136,7 @@ def verify_email():
     return render_template("verify_email.html")
 
 @app.route("/otp", methods=["GET", "POST"])
+@login_required # This page is now protected
 def otp():
     if request.method == "POST":
         entered = request.form["otp"].strip()
@@ -121,12 +148,8 @@ def otp():
     return render_template("otp.html")
 
 @app.route("/vote", methods=["GET", "POST"])
+@login_required # This page is now protected
 def vote():
-    # --- The date check below is now disabled ---
-    # now = datetime.now()
-    # if not (VOTING_START <= now <= VOTING_END):
-    #     return render_template("message.html", title="Voting Closed", message="Voting is not currently open.")
-
     email = session.get("email")
     year = session.get("year")
     if not email or not year:
@@ -221,6 +244,5 @@ def delete_candidate():
 
     return redirect(url_for("admin_dashboard"))
 
-# The if __name__ == "__main__" block is only for local development
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
