@@ -87,7 +87,7 @@ def verify_email():
             db.session.commit()
 
         if student.has_voted:
-            flash("This email address has already been used to vote.", "warning")
+            flash("TESTING-CODE-RELOAD: You already voted.", "warning")
             return redirect(url_for("verify_email"))
 
         otp = str(random.randint(100000, 999999))
@@ -220,5 +220,3 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
     app.run(host="0.0.0.0", port=5000, debug=True)
-
-#
