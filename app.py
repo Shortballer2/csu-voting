@@ -8,13 +8,12 @@ from datetime import datetime
 from functools import wraps
 
 # --- Database and App Setup ---
-from models import db, Student, Vote # Import from models.py
+from models import db, Student, Vote
 
 app = Flask(__name__)
 
 # --- Configuration ---
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "devkey")
-# Use SQLite for the database
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///votes.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -61,7 +60,7 @@ def admin_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if "admin_logged_in" not in session:
-            flash("You must be logged in to view this page.")
+            flash("You must be logged in to view this page.", "warning")
             return redirect(url_for("admin_login"))
         return f(*args, **kwargs)
     return decorated_function
@@ -82,19 +81,17 @@ def verify_email():
     if request.method == "POST":
         email = request.form["email"].strip().lower()
         if not email.endswith("@student.csuniv.edu"):
-            flash("You must use your CSU student email (@student.csuniv.edu).")
+            flash("You must use your CSU student email (@student.csuniv.edu).", "danger")
             return redirect(url_for("verify_email"))
 
-        # Check if student exists or create a new one
         student = Student.query.filter_by(email=email).first()
         if not student:
             student = Student(email=email, year=session["year"])
             db.session.add(student)
             db.session.commit()
 
-        # Check if the student has already voted
         if student.has_voted:
-            flash("This email address has already been used to vote.")
+            flash("This email address has already been used to vote.", "warning")
             return redirect(url_for("verify_email"))
 
         otp = str(random.randint(100000, 999999))
@@ -105,22 +102,20 @@ def verify_email():
             send_otp_email(email, otp)
             return redirect(url_for("otp"))
         except Exception as e:
-            flash("Error sending email. Please try again.")
-            print("Email error:", e) # For debugging
+            flash("Error sending email. Please try again.", "danger")
+            print("Email error:", e)
             return redirect(url_for("verify_email"))
 
     return render_template("verify_email.html")
 
 @app.route("/otp", methods=["GET", "POST"])
 def otp():
-    # This route is kept simple and does not need database access.
-    # The previous error was caused by adding incorrect DB logic here.
     if request.method == "POST":
         entered = request.form["otp"].strip()
         if entered == session.get("otp"):
             return redirect(url_for("vote"))
         else:
-            flash("Invalid OTP. Try again.")
+            flash("Invalid OTP. Try again.", "danger")
             return redirect(url_for("otp"))
     return render_template("otp.html")
 
@@ -135,7 +130,6 @@ def vote():
     if not email or not year:
         return redirect(url_for("index"))
 
-    # Find the student in the database
     student = Student.query.filter_by(email=email).first()
     if not student or student.has_voted:
         return render_template("message.html", title="Already Voted", message="Your vote has already been recorded.")
@@ -146,22 +140,17 @@ def vote():
     if request.method == "POST":
         selected_candidates = request.form.getlist("candidates")
         if len(selected_candidates) > 10:
-            flash("You can only select up to 10 candidates.")
+            flash("You can only select up to 10 candidates.", "warning")
             return redirect(url_for("vote"))
 
-        # Create new Vote records for each selected candidate
         for candidate_name in selected_candidates:
             new_vote = Vote(student_id=student.id, candidate=candidate_name)
             db.session.add(new_vote)
 
-        # Mark the student as having voted
         student.has_voted = True
         db.session.add(student)
-
-        # Commit all changes to the database
         db.session.commit()
 
-        # Clear session data after successful vote
         session.pop("email", None)
         session.pop("year", None)
         session.pop("otp", None)
@@ -170,7 +159,7 @@ def vote():
 
     return render_template("vote.html", candidates=year_candidates)
 
-# --- Admin Routes (Unchanged) ---
+# --- Admin Routes ---
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
@@ -180,13 +169,13 @@ def admin_login():
             session["admin_logged_in"] = True
             return redirect(url_for("admin_dashboard"))
         else:
-            flash("Invalid credentials.")
+            flash("Invalid credentials.", "danger")
     return render_template("admin_login.html")
 
 @app.route("/admin/logout")
 def admin_logout():
     session.pop("admin_logged_in", None)
-    flash("You have been logged out.")
+    flash("You have been logged out.", "success")
     return redirect(url_for("admin_login"))
 
 @app.route("/admin")
@@ -201,16 +190,16 @@ def add_candidate():
     year = request.form["year"]
     name = request.form["name"].strip()
     if not name:
-        flash("Candidate name cannot be empty.")
+        flash("Candidate name cannot be empty.", "warning")
         return redirect(url_for("admin_dashboard"))
-    
+
     candidates = load_candidates()
     if name not in candidates[year]:
         candidates[year].append(name)
         save_candidates(candidates)
-        flash(f"Added '{name}' to {year}.")
+        flash(f"Added '{name}' to {year}.", "success")
     else:
-        flash(f"'{name}' is already a candidate for {year}.")
+        flash(f"'{name}' is already a candidate for {year}.", "warning")
     
     return redirect(url_for("admin_dashboard"))
 
@@ -224,14 +213,13 @@ def delete_candidate():
     if name in candidates[year]:
         candidates[year].remove(name)
         save_candidates(candidates)
-        flash(f"Removed '{name}' from {year}.")
+        flash(f"Removed '{name}' from {year}.", "success")
     else:
-        flash(f"'{name}' was not found for {year}.")
+        flash(f"'{name}' was not found for {year}.", "danger")
 
     return redirect(url_for("admin_dashboard"))
 
-
 if __name__ == "__main__":
     with app.app_context():
-        db.create_all()  # Create database tables from models.py
+        db.create_all()
     app.run(host="0.0.0.0", port=5000, debug=True)

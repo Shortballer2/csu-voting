@@ -1,26 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>CSU Voting - Verify Email</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-  <h2>Verify Your Email</h2>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <ul>
-        {% for msg in messages %}
-          <li style="color:red;">{{ msg }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
-  <form method="POST">
-    <label>Enter your CSU Email:</label><br>
-    <input type="email" name="email" required placeholder="yourname@student.csuniv.edu">
-    <br><br>
-    <button type="submit">Send OTP</button>
-  </form>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Verify Email - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="card content-card">
+    <div class="card-body">
+        <h1 class="card-title text-center mb-4">Email Verification</h1>
+        <p class="text-center text-muted">Enter your official university email address to receive a one-time passcode.</p>
+        <form method="post">
+            <div class="mb-3">
+                <label for="email" class="form-label">Student Email Address</label>
+                <input type="email" class="form-control" id="email" name="email" placeholder="your_name@student.csuniv.edu" required>
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg">Send Code</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

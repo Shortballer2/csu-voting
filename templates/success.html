@@ -1,12 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>CSU Voting - Success</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-  <h2>Thank you for voting!</h2>
-  <p>Your vote has been recorded successfully.</p>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Vote Submitted - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="card content-card text-center">
+    <div class="card-body">
+        <h1 class="card-title text-success">✅ Thank You!</h1>
+        <p class="lead">Your vote has been successfully submitted and recorded.</p>
+        <hr>
+        <p>You can now safely close this window.</p>
+    </div>
+</div>
+{% endblock %}

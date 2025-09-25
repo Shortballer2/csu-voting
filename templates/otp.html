@@ -1,26 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>CSU Voting - Enter OTP</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-  <h2>Enter OTP Code</h2>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <ul>
-        {% for msg in messages %}
-          <li style="color:red;">{{ msg }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
-  <form method="POST">
-    <label>Enter the 6-digit code we emailed you:</label><br>
-    <input type="text" name="otp" maxlength="6" required>
-    <br><br>
-    <button type="submit">Verify</button>
-  </form>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Enter Code - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="card content-card">
+    <div class="card-body">
+        <h1 class="card-title text-center mb-4">Enter Passcode</h1>
+        <p class="text-center text-muted">A 6-digit passcode has been sent to your email. Please enter it below.</p>
+        <form method="post">
+            <div class="mb-3">
+                <label for="otp" class="form-label">One-Time Passcode (OTP)</label>
+                <input type="text" class="form-control" id="otp" name="otp" required minlength="6" maxlength="6" inputmode="numeric" pattern="\d{6}">
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg">Verify & Vote</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

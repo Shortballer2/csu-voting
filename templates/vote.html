@@ -1,27 +1,30 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>CSU Voting - Ballot</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-  <h2>Ballot for {{ session['year'] }}</h2>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <ul>
-        {% for msg in messages %}
-          <li style="color:red;">{{ msg }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
-  <form method="POST">
-    {% for c in candidates %}
-      <input type="checkbox" name="candidates" value="{{ c }}"> {{ c }}<br>
-    {% endfor %}
-    <br>
-    <button type="submit">Submit Vote</button>
-  </form>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Cast Your Vote - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="card content-card">
+    <div class="card-body">
+        <h1 class="card-title text-center mb-4">Vote for Candidates</h1>
+        <p class="text-center text-muted">You may select up to 10 candidates. Your vote is final.</p>
+        <form method="post">
+            <div class="mb-3">
+                {% if candidates %}
+                    {% for candidate in candidates %}
+                    <div class="form-check fs-5 my-3">
+                        <input class="form-check-input" type="checkbox" name="candidates" value="{{ candidate }}" id="candidate-{{ loop.index }}">
+                        <label class="form-check-label" for="candidate-{{ loop.index }}">
+                            {{ candidate }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-center">There are no candidates running for this year.</p>
+                {% endif %}
+            </div>
+            <div class="d-grid mt-4">
+                <button type="submit" class="btn btn-success btn-lg">Submit Vote</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
