@@ -17,8 +17,13 @@ app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "devkey")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///votes.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Initialize database
+# Initialize database with the app
 db.init_app(app)
+
+# --- Create database tables ---
+# This block is moved here to ensure it runs in production
+with app.app_context():
+    db.create_all()
 
 # --- Environment Variables & Constants ---
 # Email settings
@@ -87,7 +92,7 @@ def verify_email():
             db.session.commit()
 
         if student.has_voted:
-            flash("TESTING-CODE-RELOAD: You already voted.", "warning")
+            flash("This email address has already been used to vote.", "warning")
             return redirect(url_for("verify_email"))
 
         otp = str(random.randint(100000, 999999))
@@ -216,8 +221,6 @@ def delete_candidate():
 
     return redirect(url_for("admin_dashboard"))
 
+# The if __name__ == "__main__" block is only for local development
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(host="0.0.0.0", port=5000, debug=True)
-#
