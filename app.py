@@ -31,10 +31,6 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 
-# Voting time window
-VOTING_START = datetime(2025, 10, 1, 7, 0, 0)
-VOTING_END = datetime(2025, 10, 1, 19, 0, 0)
-
 # --- Helper Functions ---
 def load_candidates():
     with open("candidates.json") as f:
@@ -121,9 +117,10 @@ def otp():
 
 @app.route("/vote", methods=["GET", "POST"])
 def vote():
-    now = datetime.now()
-    if not (VOTING_START <= now <= VOTING_END):
-        return render_template("message.html", title="Voting Closed", message="Voting is not currently open.")
+    # --- The date check below is now disabled ---
+    # now = datetime.now()
+    # if not (VOTING_START <= now <= VOTING_END):
+    #     return render_template("message.html", title="Voting Closed", message="Voting is not currently open.")
 
     email = session.get("email")
     year = session.get("year")
