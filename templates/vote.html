@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CSU Voting - Ballot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h2>Ballot for {{ session['year'] }}</h2>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul>
+        {% for msg in messages %}
+          <li style="color:red;">{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+  <form method="POST">
+    {% for c in candidates %}
+      <input type="checkbox" name="candidates" value="{{ c }}"> {{ c }}<br>
+    {% endfor %}
+    <br>
+    <button type="submit">Submit Vote</button>
+  </form>
+</body>
+</html>

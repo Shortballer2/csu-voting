@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CSU Voting - Select Year</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h1>Welcome to CSU Student Voting</h1>
+  <form method="POST">
+    <label>Select your class year:</label><br>
+    <select name="year" required>
+      <option value="Freshman">Freshman</option>
+      <option value="Sophomore">Sophomore</option>
+      <option value="Junior">Junior</option>
+      <option value="Senior">Senior</option>
+    </select>
+    <br><br>
+    <button type="submit">Continue</button>
+  </form>
+</body>
+</html>
