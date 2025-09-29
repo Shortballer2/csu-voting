@@ -146,27 +146,19 @@ def vote():
     candidates = load_candidates()
     year_candidates = candidates.get(year, [])
     if request.method == "POST":
-        # Get checked candidates
         selected_candidates = request.form.getlist("candidates")
-        
-        # UPDATED: Check for and add the write-in candidate
         write_in = request.form.get("write_in_candidate", "").strip()
         if write_in:
             selected_candidates.append(write_in)
-
         if len(selected_candidates) > 10:
             flash("You can only select up to 10 candidates (including write-ins).", "warning")
             return redirect(url_for("vote"))
-
-        # You must select at least one candidate
         if not selected_candidates:
             flash("You must select at least one candidate to vote.", "warning")
             return redirect(url_for("vote"))
-
         for candidate_name in selected_candidates:
             new_vote = Vote(student_id=student.id, candidate=candidate_name)
             db.session.add(new_vote)
-
         student.has_voted = True
         db.session.add(student)
         db.session.commit()
@@ -232,19 +224,30 @@ def delete_candidate():
         flash(f"'{name}' was not found for {year}.", "danger")
     return redirect(url_for("admin_dashboard"))
 
+# UPDATED: Route for handling manual vote submission from admin panel
 @app.route("/admin/manual_vote", methods=["POST"])
 @admin_login_required
 def manual_vote():
     email = request.form.get("email").strip().lower()
     year = request.form.get("year")
-    candidate_name = request.form.get("candidate_name").strip()
     
-    # UPDATED: Handle write-in logic for manual vote
-    if candidate_name == 'write-in':
-        candidate_name = request.form.get("write_in_name", "").strip()
+    if not email or not year:
+        flash("Email and Class Year are required.", "danger")
+        return redirect(url_for("admin_dashboard"))
 
-    if not all([email, year, candidate_name]):
-        flash("Email, Class Year, and a valid Candidate Name are required.", "danger")
+    # Get checked candidates from the form
+    selected_candidates = request.form.getlist("candidates")
+    # Get the write-in value from the form
+    write_in = request.form.get("write_in_name", "").strip()
+    if write_in:
+        selected_candidates.append(write_in)
+
+    # Validate number of votes
+    if len(selected_candidates) > 10:
+        flash("You can only select up to 10 candidates (including write-ins).", "warning")
+        return redirect(url_for("admin_dashboard"))
+    if not selected_candidates:
+        flash("You must select at least one candidate to vote.", "warning")
         return redirect(url_for("admin_dashboard"))
 
     student = Student.query.filter_by(email=email).first()
@@ -257,15 +260,17 @@ def manual_vote():
         flash(f"Student '{email}' has already voted.", "warning")
         return redirect(url_for("admin_dashboard"))
 
-    new_vote = Vote(student_id=student.id, candidate=candidate_name)
-    db.session.add(new_vote)
+    # Record the votes
+    for candidate_name in selected_candidates:
+        new_vote = Vote(student_id=student.id, candidate=candidate_name)
+        db.session.add(new_vote)
 
     student.has_voted = True
     db.session.add(student)
     
     db.session.commit()
 
-    flash(f"Successfully cast vote for '{candidate_name}' on behalf of '{email}'.", "success")
+    flash(f"Successfully cast {len(selected_candidates)} vote(s) on behalf of '{email}'.", "success")
     return redirect(url_for("admin_dashboard"))
 
 @app.route("/results")
