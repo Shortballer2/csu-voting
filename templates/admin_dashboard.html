@@ -33,7 +33,7 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card mb-4">
     <div class="card-header">
         Manage Candidates
     </div>
@@ -57,6 +57,39 @@
             <p class="text-muted">No candidates listed for this year.</p>
             {% endif %}
         {% endfor %}
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Manually Cast Vote
+    </div>
+    <div class="card-body">
+        <form class="row g-3 align-items-end" method="post" action="{{ url_for('manual_vote') }}">
+            <div class="col-md-4">
+                <label for="email" class="form-label">Student Email</label>
+                <input type="email" name="email" id="email" class="form-control" placeholder="student_email@student.csuniv.edu" required>
+            </div>
+            <div class="col-md-3">
+                <label for="manual_vote_year" class="form-label">Class Year</label>
+                <select name="year" id="manual_vote_year" class="form-select" required>
+                    <option value="Freshman">Freshman</option>
+                    <option value="Sophomore">Sophomore</option>
+                    <option value="Junior">Junior</option>
+                    <option value="Senior">Senior</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="candidate_name" class="form-label">Candidate Name</label>
+                <input type="text" name="candidate_name" id="candidate_name" class="form-control" required>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary">Submit Vote</button>
+            </div>
+        </form>
+        <div class="form-text mt-2">
+            Note: If the email does not exist, a new student record will be created.
+        </div>
     </div>
 </div>
 {% endblock %}

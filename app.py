@@ -6,10 +6,10 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from email.mime.text import MIMEText
 from datetime import datetime
 from functools import wraps
-from sqlalchemy import func
 
 # --- Database and App Setup ---
 from models import db, Student, Vote
+from sqlalchemy import func
 
 app = Flask(__name__)
 
@@ -26,16 +26,11 @@ with app.app_context():
     db.create_all()
 
 # --- Environment Variables & Constants ---
-# NEW: General access password for voting
 VOTING_PASSWORD = os.getenv("VOTING_PASSWORD")
-
-# Email settings
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-
-# Admin credentials
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 
@@ -53,14 +48,12 @@ def send_otp_email(to_email, otp):
     msg["Subject"] = "CSU Voting OTP Code"
     msg["From"] = EMAIL_USER
     msg["To"] = to_email
-
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
         server.login(EMAIL_USER, EMAIL_PASS)
         server.send_message(msg)
 
 # --- Decorators ---
-# NEW: Decorator to protect public voting pages
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -79,8 +72,6 @@ def admin_login_required(f):
     return decorated_function
 
 # --- Public Routes ---
-
-# NEW: Public login route
 @app.route("/login", methods=["GET", "POST"])
 def public_login():
     if request.method == "POST":
@@ -93,7 +84,7 @@ def public_login():
     return render_template("login.html")
 
 @app.route("/", methods=["GET", "POST"])
-@login_required # This page is now protected
+@login_required
 def index():
     if request.method == "POST":
         session["year"] = request.form["year"]
@@ -101,31 +92,26 @@ def index():
     return render_template("index.html")
 
 @app.route("/verify_email", methods=["GET", "POST"])
-@login_required # This page is now protected
+@login_required
 def verify_email():
     if "year" not in session:
         return redirect(url_for("index"))
-
     if request.method == "POST":
         email = request.form["email"].strip().lower()
         if not email.endswith("@student.csuniv.edu"):
             flash("You must use your CSU student email (@student.csuniv.edu).", "danger")
             return redirect(url_for("verify_email"))
-
         student = Student.query.filter_by(email=email).first()
         if not student:
             student = Student(email=email, year=session["year"])
             db.session.add(student)
             db.session.commit()
-
         if student.has_voted:
             flash("This email address has already been used to vote.", "warning")
             return redirect(url_for("verify_email"))
-
         otp = str(random.randint(100000, 999999))
         session["otp"] = otp
         session["email"] = email
-
         try:
             send_otp_email(email, otp)
             return redirect(url_for("otp"))
@@ -133,11 +119,10 @@ def verify_email():
             flash("Error sending email. Please try again.", "danger")
             print("Email error:", e)
             return redirect(url_for("verify_email"))
-
     return render_template("verify_email.html")
 
 @app.route("/otp", methods=["GET", "POST"])
-@login_required # This page is now protected
+@login_required
 def otp():
     if request.method == "POST":
         entered = request.form["otp"].strip()
@@ -149,40 +134,32 @@ def otp():
     return render_template("otp.html")
 
 @app.route("/vote", methods=["GET", "POST"])
-@login_required # This page is now protected
+@login_required
 def vote():
     email = session.get("email")
     year = session.get("year")
     if not email or not year:
         return redirect(url_for("index"))
-
     student = Student.query.filter_by(email=email).first()
     if not student or student.has_voted:
         return render_template("message.html", title="Already Voted", message="Your vote has already been recorded.")
-
     candidates = load_candidates()
     year_candidates = candidates.get(year, [])
-
     if request.method == "POST":
         selected_candidates = request.form.getlist("candidates")
         if len(selected_candidates) > 10:
             flash("You can only select up to 10 candidates.", "warning")
             return redirect(url_for("vote"))
-
         for candidate_name in selected_candidates:
             new_vote = Vote(student_id=student.id, candidate=candidate_name)
             db.session.add(new_vote)
-
         student.has_voted = True
         db.session.add(student)
         db.session.commit()
-
         session.pop("email", None)
         session.pop("year", None)
         session.pop("otp", None)
-
         return render_template("success.html")
-
     return render_template("vote.html", candidates=year_candidates)
 
 # --- Admin Routes ---
@@ -218,7 +195,6 @@ def add_candidate():
     if not name:
         flash("Candidate name cannot be empty.", "warning")
         return redirect(url_for("admin_dashboard"))
-
     candidates = load_candidates()
     if name not in candidates[year]:
         candidates[year].append(name)
@@ -226,7 +202,6 @@ def add_candidate():
         flash(f"Added '{name}' to {year}.", "success")
     else:
         flash(f"'{name}' is already a candidate for {year}.", "warning")
-    
     return redirect(url_for("admin_dashboard"))
 
 @app.route("/admin/delete", methods=["POST"])
@@ -234,7 +209,6 @@ def add_candidate():
 def delete_candidate():
     year = request.form["year"]
     name = request.form["name"]
-
     candidates = load_candidates()
     if name in candidates[year]:
         candidates[year].remove(name)
@@ -242,21 +216,53 @@ def delete_candidate():
         flash(f"Removed '{name}' from {year}.", "success")
     else:
         flash(f"'{name}' was not found for {year}.", "danger")
-
     return redirect(url_for("admin_dashboard"))
 
-# Route to display voting results
-@app.route("/results")
-@admin_login_required # Protect this page so only admins can see it
-def results():
-    """Queries the database and displays vote counts."""
+# UPDATED: Route for handling manual vote submission from admin panel
+@app.route("/admin/manual_vote", methods=["POST"])
+@admin_login_required
+def manual_vote():
+    email = request.form.get("email").strip().lower()
+    year = request.form.get("year")
+    candidate_name = request.form.get("candidate_name").strip()
 
-    # This query groups votes by candidate and counts them, ordering by the highest count
+    if not all([email, year, candidate_name]):
+        flash("Email, Class Year, and Candidate Name are required.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    student = Student.query.filter_by(email=email).first()
+
+    # If student does not exist, create a new record
+    if not student:
+        student = Student(email=email, year=year)
+        db.session.add(student)
+
+    # Check if the student has already voted
+    if student.has_voted:
+        flash(f"Student '{email}' has already voted.", "warning")
+        return redirect(url_for("admin_dashboard"))
+
+    # Record the vote
+    new_vote = Vote(student_id=student.id, candidate=candidate_name)
+    db.session.add(new_vote)
+
+    # Mark student as voted
+    student.has_voted = True
+    db.session.add(student)
+    
+    # Commit all changes (new student, new vote, updated student status)
+    db.session.commit()
+
+    flash(f"Successfully cast vote for '{candidate_name}' on behalf of '{email}'.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+@app.route("/results")
+@admin_login_required
+def results():
     vote_counts = db.session.query(
         Vote.candidate, 
         func.count(Vote.candidate).label('total_votes')
     ).group_by(Vote.candidate).order_by(func.count(Vote.candidate).desc()).all()
-
     return render_template("results.html", results=vote_counts)
 
 if __name__ == "__main__":
