@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from email.mime.text import MIMEText
 from datetime import datetime
 from functools import wraps
+from sqlalchemy import func
 
 # --- Database and App Setup ---
 from models import db, Student, Vote
@@ -243,6 +244,20 @@ def delete_candidate():
         flash(f"'{name}' was not found for {year}.", "danger")
 
     return redirect(url_for("admin_dashboard"))
+
+# Route to display voting results
+@app.route("/results")
+@admin_login_required # Protect this page so only admins can see it
+def results():
+    """Queries the database and displays vote counts."""
+
+    # This query groups votes by candidate and counts them, ordering by the highest count
+    vote_counts = db.session.query(
+        Vote.candidate, 
+        func.count(Vote.candidate).label('total_votes')
+    ).group_by(Vote.candidate).order_by(func.count(Vote.candidate).desc()).all()
+
+    return render_template("results.html", results=vote_counts)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
