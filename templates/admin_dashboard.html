@@ -80,16 +80,68 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <label for="candidate_name" class="form-label">Candidate Name</label>
-                <input type="text" name="candidate_name" id="candidate_name" class="form-control" required>
+                <label for="candidate_name_select" class="form-label">Candidate</label>
+                <select name="candidate_name" id="candidate_name_select" class="form-select" required>
+                    </select>
+            </div>
+            <div class="col-md-3" id="write_in_wrapper" style="display: none;">
+                <label for="write_in_name" class="form-label">Write-in Name</label>
+                <input type="text" name="write_in_name" id="write_in_name" class="form-control">
             </div>
             <div class="col-md-2 d-grid">
                 <button type="submit" class="btn btn-primary">Submit Vote</button>
             </div>
         </form>
-        <div class="form-text mt-2">
-            Note: If the email does not exist, a new student record will be created.
-        </div>
     </div>
 </div>
+
+<script>
+    // Convert Jinja candidates dictionary to a JavaScript object
+    const candidates = {{ candidates | tojson }};
+
+    const yearSelect = document.getElementById('manual_vote_year');
+    const candidateSelect = document.getElementById('candidate_name_select');
+    const writeInWrapper = document.getElementById('write_in_wrapper');
+    const writeInInput = document.getElementById('write_in_name');
+
+    function updateCandidates() {
+        const selectedYear = yearSelect.value;
+        const yearCandidates = candidates[selectedYear] || [];
+        
+        // Clear previous options
+        candidateSelect.innerHTML = '<option value="" selected disabled>Choose...</option>';
+        
+        // Populate new options
+        yearCandidates.forEach(candidate => {
+            const option = document.createElement('option');
+            option.value = candidate;
+            option.textContent = candidate;
+            candidateSelect.appendChild(option);
+        });
+        
+        // Add write-in option
+        const writeInOption = document.createElement('option');
+        writeInOption.value = 'write-in';
+        writeInOption.textContent = 'Write-in...';
+        candidateSelect.appendChild(writeInOption);
+
+        // Reset write-in field
+        writeInWrapper.style.display = 'none';
+        writeInInput.required = false;
+    }
+
+    candidateSelect.addEventListener('change', function() {
+        if (this.value === 'write-in') {
+            writeInWrapper.style.display = 'block';
+            writeInInput.required = true;
+        } else {
+            writeInWrapper.style.display = 'none';
+            writeInInput.required = false;
+        }
+    });
+
+    // Initial population and event listener
+    yearSelect.addEventListener('change', updateCandidates);
+    document.addEventListener('DOMContentLoaded', updateCandidates);
+</script>
 {% endblock %}
