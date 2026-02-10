@@ -2,6 +2,7 @@ import os
 import json
 import random
 import smtplib
+import ssl
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -60,8 +61,13 @@ def send_otp_email(to_email, otp):
     msg["Subject"] = "CSU Voting OTP Code"
     msg["From"] = EMAIL_USER
     msg["To"] = to_email
+    if not EMAIL_USER or not EMAIL_PASS:
+        raise RuntimeError("Missing EMAIL_USER or EMAIL_PASS for SMTP authentication.")
+    ssl_context = ssl.create_default_context()
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
+        server.ehlo()
+        server.starttls(context=ssl_context)
+        server.ehlo()
         server.login(EMAIL_USER, EMAIL_PASS)
         server.send_message(msg)
 
