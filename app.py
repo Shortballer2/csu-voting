@@ -237,7 +237,7 @@ def delete_candidate():
 @app.route("/admin/manual_vote", methods=["POST"])
 @admin_login_required
 def manual_vote():
-    email = request.form.get("email").strip().lower()
+    email = (request.form.get("email") or "").strip().lower()
     year = request.form.get("year")
     
     if not email or not year:
@@ -264,6 +264,7 @@ def manual_vote():
     if not student:
         student = Student(email=email, year=year)
         db.session.add(student)
+        db.session.flush()
 
     if student.has_voted:
         flash(f"Student '{email}' has already voted.", "warning")
