@@ -36,6 +36,15 @@ ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 
 # --- Helper Functions ---
 def load_candidates():
+    if not os.path.exists("candidates.json"):
+        default_candidates = {
+            "Freshman": [],
+            "Sophomore": [],
+            "Junior": [],
+            "Senior": [],
+        }
+        save_candidates(default_candidates)
+        return default_candidates
     with open("candidates.json") as f:
         return json.load(f)
 

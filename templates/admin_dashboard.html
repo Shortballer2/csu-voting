@@ -2,9 +2,12 @@
 {% block title %}Admin Dashboard - {{ super() }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mt-4 mb-3">
-    <h1>Admin Dashboard</h1>
-    <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-secondary">Logout</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-4 mb-3">
+    <h1 class="mb-0">Admin Dashboard</h1>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('results') }}" class="btn btn-outline-primary">View Results</a>
+        <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-secondary">Logout</a>
+    </div>
 </div>
 
 <div class="card mb-4">
@@ -83,8 +86,8 @@
             </div>
             <hr class="my-4">
             <h5>Select Candidates (up to 10)</h5>
-            <div id="candidate_checkbox_wrapper" class="mb-3">
-                </div>
+            <p class="text-muted mb-2">Selected: <span id="selected-count">0</span>/10</p>
+            <div id="candidate_checkbox_wrapper" class="mb-3"></div>
             <div class="mb-3">
                 <label for="write_in_name" class="form-label fw-bold">Write-in Candidate (Optional)</label>
                 <input type="text" class="form-control" name="write_in_name" id="write_in_name" placeholder="Enter a name">
@@ -100,6 +103,19 @@
     const candidates = {{ candidates | tojson }};
     const yearSelect = document.getElementById('manual_vote_year');
     const checkboxWrapper = document.getElementById('candidate_checkbox_wrapper');
+
+    const MAX_SELECTIONS = 10;
+
+    function updateSelectionState() {
+        const selected = checkboxWrapper.querySelectorAll('input[type="checkbox"]:checked').length;
+        document.getElementById('selected-count').textContent = selected;
+        const disableUnchecked = selected >= MAX_SELECTIONS;
+        checkboxWrapper.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+            if (!input.checked) {
+                input.disabled = disableUnchecked;
+            }
+        });
+    }
 
     function updateCandidateCheckboxes() {
         const selectedYear = yearSelect.value;
@@ -118,6 +134,7 @@
                 input.name = 'candidates';
                 input.value = candidate;
                 input.id = `manual-candidate-${index}`;
+                input.addEventListener('change', updateSelectionState);
                 
                 const label = document.createElement('label');
                 label.className = 'form-check-label';
@@ -131,6 +148,7 @@
         } else {
             checkboxWrapper.innerHTML = '<p class="text-muted">No candidates for this year.</p>';
         }
+        updateSelectionState();
     }
 
     yearSelect.addEventListener('change', updateCandidateCheckboxes);
