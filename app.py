@@ -6,10 +6,13 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from email.mime.text import MIMEText
 from datetime import datetime
 from functools import wraps
+from dotenv import load_dotenv
 
 # --- Database and App Setup ---
 from models import db, Student, Vote
 from sqlalchemy import func
+
+load_dotenv("csu-voting.env", override=True)
 
 app = Flask(__name__)
 
