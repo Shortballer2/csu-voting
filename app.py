@@ -44,16 +44,15 @@ STUDENT_ID_PATTERN = re.compile(r"^\d{6}$")
 # --- Helper Functions ---
 def load_candidates():
     if not os.path.exists("candidates.json"):
-        default_candidates = {
-            "Freshman": [],
-            "Sophomore": [],
-            "Junior": [],
-            "Senior": [],
-        }
+        default_candidates = {"General Election": []}
         save_candidates(default_candidates)
         return default_candidates
     with open("candidates.json") as f:
-        return json.load(f)
+        data = json.load(f)
+    if not isinstance(data, dict) or not data:
+        data = {"General Election": []}
+        save_candidates(data)
+    return data
 
 def save_candidates(data):
     with open("candidates.json", "w") as f:
@@ -107,10 +106,15 @@ def public_login():
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
+    elections = load_candidates()
     if request.method == "POST":
-        session["year"] = request.form["year"]
+        selected_election = request.form.get("year", "").strip()
+        if selected_election not in elections:
+            flash("Please choose a valid ballot.", "warning")
+            return redirect(url_for("index"))
+        session["year"] = selected_election
         return redirect(url_for("verify_email"))
-    return render_template("index.html")
+    return render_template("index.html", elections=list(elections.keys()))
 
 @app.route("/verify_email", methods=["GET", "POST"])
 @login_required
@@ -248,17 +252,86 @@ def admin_logout():
 def admin_dashboard():
     candidates = load_candidates()
     voter_records = VoterRecord.query.order_by(VoterRecord.id.desc()).limit(100).all()
-    return render_template("admin_dashboard.html", candidates=candidates, voter_records=voter_records)
+    election_names = list(candidates.keys())
+    return render_template(
+        "admin_dashboard.html",
+        candidates=candidates,
+        voter_records=voter_records,
+        election_names=election_names,
+    )
+
+@app.route("/admin/election/add", methods=["POST"])
+@admin_login_required
+def add_election():
+    election_name = request.form.get("election_name", "").strip()
+    if not election_name:
+        flash("Election/ballot name cannot be empty.", "warning")
+        return redirect(url_for("admin_dashboard"))
+    candidates = load_candidates()
+    if election_name in candidates:
+        flash(f"'{election_name}' already exists.", "warning")
+        return redirect(url_for("admin_dashboard"))
+    candidates[election_name] = []
+    save_candidates(candidates)
+    flash(f"Created election/ballot '{election_name}'.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+@app.route("/admin/election/rename", methods=["POST"])
+@admin_login_required
+def rename_election():
+    current_name = request.form.get("current_name", "").strip()
+    new_name = request.form.get("new_name", "").strip()
+    if not current_name or not new_name:
+        flash("Both current and new election names are required.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    candidates = load_candidates()
+    if current_name not in candidates:
+        flash(f"Election/ballot '{current_name}' was not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    if new_name in candidates and new_name != current_name:
+        flash(f"Election/ballot '{new_name}' already exists.", "warning")
+        return redirect(url_for("admin_dashboard"))
+    candidates[new_name] = candidates.pop(current_name)
+    save_candidates(candidates)
+    VoterRecord.query.filter_by(year=current_name).update({"year": new_name}, synchronize_session=False)
+    Student.query.filter_by(year=current_name).update({"year": new_name}, synchronize_session=False)
+    db.session.commit()
+    flash(f"Renamed election/ballot '{current_name}' to '{new_name}'.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+@app.route("/admin/election/delete", methods=["POST"])
+@admin_login_required
+def delete_election():
+    election_name = request.form.get("election_name", "").strip()
+    candidates = load_candidates()
+    if election_name not in candidates:
+        flash(f"Election/ballot '{election_name}' was not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    if len(candidates) == 1:
+        flash("You must keep at least one election/ballot configured.", "warning")
+        return redirect(url_for("admin_dashboard"))
+    candidates.pop(election_name)
+    save_candidates(candidates)
+    VoterRecord.query.filter_by(year=election_name).delete(synchronize_session=False)
+    Student.query.filter_by(year=election_name).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"Deleted election/ballot '{election_name}' and its voter records.", "success")
+    return redirect(url_for("admin_dashboard"))
 
 @app.route("/admin/add", methods=["POST"])
 @admin_login_required
 def add_candidate():
-    year = request.form["year"]
+    year = request.form.get("year", "").strip()
     name = request.form["name"].strip()
+    if not year:
+        flash("Election/ballot is required.", "warning")
+        return redirect(url_for("admin_dashboard"))
     if not name:
         flash("Candidate name cannot be empty.", "warning")
         return redirect(url_for("admin_dashboard"))
     candidates = load_candidates()
+    if year not in candidates:
+        candidates[year] = []
     if name not in candidates[year]:
         candidates[year].append(name)
         save_candidates(candidates)
@@ -273,6 +346,9 @@ def delete_candidate():
     year = request.form["year"]
     name = request.form["name"]
     candidates = load_candidates()
+    if year not in candidates:
+        flash(f"Election/ballot '{year}' was not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
     if name in candidates[year]:
         candidates[year].remove(name)
         save_candidates(candidates)
@@ -290,7 +366,11 @@ def manual_vote():
     year = request.form.get("year")
     
     if not year:
-        flash("Class Year is required.", "danger")
+        flash("Election/ballot is required.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    candidates = load_candidates()
+    if year not in candidates:
+        flash("Please choose a valid election/ballot.", "danger")
         return redirect(url_for("admin_dashboard"))
     if not email and not student_id_number:
         flash("Either student email or student ID number is required.", "danger")
@@ -378,7 +458,7 @@ def reset_voter_records():
     updated_count = query.update({"has_voted": False}, synchronize_session=False)
     db.session.commit()
     if year:
-        flash(f"Reset {updated_count} voter record(s) for {year}.", "success")
+        flash(f"Reset {updated_count} voter record(s) for '{year}'.", "success")
     else:
         flash(f"Reset {updated_count} voter record(s) across all years.", "success")
     return redirect(url_for("admin_dashboard"))

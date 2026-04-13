@@ -5,7 +5,7 @@
 <div class="card content-card">
     <div class="card-body">
         <h1 class="card-title text-center mb-4">Vote for Candidates</h1>
-        <p class="text-center text-muted">You may select up to 10 candidates. Your vote is final.</p>
+        <p class="text-center text-muted">You may select up to 10 options. Your vote is final.</p>
         <form method="post">
             <div class="mb-3">
                 {% if candidates %}
@@ -18,7 +18,7 @@
                     </div>
                     {% endfor %}
                 {% else %}
-                    <p class="text-center">There are no candidates running for this year.</p>
+                    <p class="text-center">There are no options configured for this ballot yet.</p>
                 {% endif %}
             </div>
             
