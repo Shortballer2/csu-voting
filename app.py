@@ -5,6 +5,7 @@ import smtplib
 import ssl
 import re
 import io
+from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -22,7 +23,13 @@ app = Flask(__name__)
 
 # --- Configuration ---
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "devkey")
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///votes.db"
+database_url = os.getenv("DATABASE_URL", "").strip()
+if database_url:
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+else:
+    default_db_path = Path(os.getenv("DB_PATH", "data/votes.db")).expanduser()
+    default_db_path.parent.mkdir(parents=True, exist_ok=True)
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{default_db_path}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Initialize database with the app
