@@ -5,16 +5,43 @@
 <div class="card content-card">
     <div class="card-body">
         <h1 class="card-title text-center mb-4">Email Verification</h1>
-        <p class="text-center text-muted">Enter your official university email in the format firstnamemiddleinitiallastname@student.csuniv.edu.</p>
+        <p class="text-center text-muted">Verify with your official university email or your student ID number.</p>
         <form method="post">
             <div class="mb-3">
+                <label for="verification_method" class="form-label">Verification Method</label>
+                <select class="form-select" id="verification_method" name="verification_method">
+                    <option value="email" selected>Email + OTP</option>
+                    <option value="student_id">Student ID Number</option>
+                </select>
+            </div>
+            <div class="mb-3">
                 <label for="email" class="form-label">Student Email Address</label>
-                <input type="email" class="form-control" id="email" name="email" placeholder="firstnamemiddleinitiallastname@student.csuniv.edu" pattern="[A-Za-z]{5,}@student\.csuniv\.edu" required>
+                <input type="email" class="form-control" id="email" name="email" placeholder="firstnamemiddleinitiallastname@student.csuniv.edu" pattern="[A-Za-z]{5,}@student\.csuniv\.edu">
+            </div>
+            <div class="mb-3 d-none" id="student-id-group">
+                <label for="student_id_number" class="form-label">Student ID Number</label>
+                <input type="text" class="form-control" id="student_id_number" name="student_id_number" placeholder="7 to 10 digits" pattern="\d{7,10}">
             </div>
             <div class="d-grid">
-                <button type="submit" class="btn btn-primary btn-lg">Send Code</button>
+                <button type="submit" class="btn btn-primary btn-lg">Continue</button>
             </div>
         </form>
     </div>
 </div>
+<script>
+    const methodSelect = document.getElementById("verification_method");
+    const emailInput = document.getElementById("email");
+    const studentIdGroup = document.getElementById("student-id-group");
+    const studentIdInput = document.getElementById("student_id_number");
+
+    function toggleMethodFields() {
+        const isEmail = methodSelect.value === "email";
+        emailInput.required = isEmail;
+        studentIdInput.required = !isEmail;
+        studentIdGroup.classList.toggle("d-none", isEmail);
+    }
+
+    methodSelect.addEventListener("change", toggleMethodFields);
+    document.addEventListener("DOMContentLoaded", toggleMethodFields);
+</script>
 {% endblock %}

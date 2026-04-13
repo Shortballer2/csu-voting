@@ -11,7 +11,7 @@ from functools import wraps
 from dotenv import load_dotenv
 
 # --- Database and App Setup ---
-from models import db, Student, Vote
+from models import db, Student, Vote, VoterRecord
 from sqlalchemy import func
 
 load_dotenv("csu-voting.env", override=True)
@@ -39,6 +39,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]+[a-z][a-z]+@student\.csuniv\.edu$")
+STUDENT_ID_PATTERN = re.compile(r"^\d{7,10}$")
 
 # --- Helper Functions ---
 def load_candidates():
@@ -117,7 +118,32 @@ def verify_email():
     if "year" not in session:
         return redirect(url_for("index"))
     if request.method == "POST":
-        email = request.form["email"].strip().lower()
+        verification_method = request.form.get("verification_method", "email")
+        if verification_method == "student_id":
+            student_id_number = request.form.get("student_id_number", "").strip()
+            if not STUDENT_ID_PATTERN.match(student_id_number):
+                flash("Enter a valid student ID number (7 to 10 digits).", "danger")
+                return redirect(url_for("verify_email"))
+            voter_record = VoterRecord.query.filter_by(
+                method="student_id",
+                identifier=student_id_number,
+            ).first()
+            if voter_record and voter_record.has_voted:
+                flash("This student ID number has already been used to vote.", "warning")
+                return redirect(url_for("verify_email"))
+            if not voter_record:
+                voter_record = VoterRecord(
+                    method="student_id",
+                    identifier=student_id_number,
+                    year=session["year"],
+                )
+                db.session.add(voter_record)
+                db.session.commit()
+            session["voter_record_id"] = voter_record.id
+            session.pop("otp", None)
+            session.pop("email", None)
+            return redirect(url_for("vote"))
+        email = request.form.get("email", "").strip().lower()
         if not STUDENT_EMAIL_PATTERN.match(email):
             flash(
                 "Use your CSU student email in this format: firstnamemiddleinitiallastname@student.csuniv.edu.",
@@ -129,12 +155,18 @@ def verify_email():
             student = Student(email=email, year=session["year"])
             db.session.add(student)
             db.session.commit()
-        if student.has_voted:
+        voter_record = VoterRecord.query.filter_by(method="email", identifier=email).first()
+        if voter_record and voter_record.has_voted:
             flash("This email address has already been used to vote.", "warning")
             return redirect(url_for("verify_email"))
+        if not voter_record:
+            voter_record = VoterRecord(method="email", identifier=email, year=session["year"])
+            db.session.add(voter_record)
+            db.session.commit()
         otp = str(random.randint(100000, 999999))
         session["otp"] = otp
         session["email"] = email
+        session["voter_record_id"] = voter_record.id
         try:
             send_otp_email(email, otp)
             return redirect(url_for("otp"))
@@ -159,12 +191,12 @@ def otp():
 @app.route("/vote", methods=["GET", "POST"])
 @login_required
 def vote():
-    email = session.get("email")
+    voter_record_id = session.get("voter_record_id")
     year = session.get("year")
-    if not email or not year:
+    if not voter_record_id or not year:
         return redirect(url_for("index"))
-    student = Student.query.filter_by(email=email).first()
-    if not student or student.has_voted:
+    voter_record = VoterRecord.query.filter_by(id=voter_record_id).first()
+    if not voter_record or voter_record.has_voted:
         return render_template("message.html", title="Already Voted", message="Your vote has already been recorded.")
     candidates = load_candidates()
     year_candidates = candidates.get(year, [])
@@ -180,14 +212,15 @@ def vote():
             flash("You must select at least one candidate to vote.", "warning")
             return redirect(url_for("vote"))
         for candidate_name in selected_candidates:
-            new_vote = Vote(student_id=student.id, candidate=candidate_name)
+            new_vote = Vote(candidate=candidate_name)
             db.session.add(new_vote)
-        student.has_voted = True
-        db.session.add(student)
+        voter_record.has_voted = True
+        db.session.add(voter_record)
         db.session.commit()
         session.pop("email", None)
         session.pop("year", None)
         session.pop("otp", None)
+        session.pop("voter_record_id", None)
         return render_template("success.html")
     return render_template("vote.html", candidates=year_candidates)
 
@@ -214,7 +247,8 @@ def admin_logout():
 @admin_login_required
 def admin_dashboard():
     candidates = load_candidates()
-    return render_template("admin_dashboard.html", candidates=candidates)
+    voter_records = VoterRecord.query.order_by(VoterRecord.id.desc()).limit(100).all()
+    return render_template("admin_dashboard.html", candidates=candidates, voter_records=voter_records)
 
 @app.route("/admin/add", methods=["POST"])
 @admin_login_required
@@ -252,10 +286,14 @@ def delete_candidate():
 @admin_login_required
 def manual_vote():
     email = (request.form.get("email") or "").strip().lower()
+    student_id_number = (request.form.get("student_id_number") or "").strip()
     year = request.form.get("year")
     
-    if not email or not year:
-        flash("Email and Class Year are required.", "danger")
+    if not year:
+        flash("Class Year is required.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    if not email and not student_id_number:
+        flash("Either student email or student ID number is required.", "danger")
         return redirect(url_for("admin_dashboard"))
 
     # Get checked candidates from the form
@@ -273,28 +311,76 @@ def manual_vote():
         flash("You must select at least one candidate to vote.", "warning")
         return redirect(url_for("admin_dashboard"))
 
-    student = Student.query.filter_by(email=email).first()
-
-    if not student:
-        student = Student(email=email, year=year)
-        db.session.add(student)
-        db.session.flush()
-
-    if student.has_voted:
-        flash(f"Student '{email}' has already voted.", "warning")
+    identifier = student_id_number or email
+    method = "student_id" if student_id_number else "email"
+    if method == "student_id" and not STUDENT_ID_PATTERN.match(student_id_number):
+        flash("Student ID number must be 7 to 10 digits.", "danger")
         return redirect(url_for("admin_dashboard"))
+    if method == "email":
+        if not STUDENT_EMAIL_PATTERN.match(email):
+            flash("Enter a valid CSU student email.", "danger")
+            return redirect(url_for("admin_dashboard"))
+        student = Student.query.filter_by(email=email).first()
+        if not student:
+            student = Student(email=email, year=year)
+            db.session.add(student)
+
+    voter_record = VoterRecord.query.filter_by(method=method, identifier=identifier).first()
+    if voter_record and voter_record.has_voted:
+        flash(f"Voter '{identifier}' has already voted.", "warning")
+        return redirect(url_for("admin_dashboard"))
+    if not voter_record:
+        voter_record = VoterRecord(method=method, identifier=identifier, year=year)
+        db.session.add(voter_record)
+        db.session.flush()
 
     # Record the votes
     for candidate_name in selected_candidates:
-        new_vote = Vote(student_id=student.id, candidate=candidate_name)
+        new_vote = Vote(candidate=candidate_name)
         db.session.add(new_vote)
 
-    student.has_voted = True
-    db.session.add(student)
+    voter_record.has_voted = True
+    db.session.add(voter_record)
     
     db.session.commit()
 
-    flash(f"Successfully cast {len(selected_candidates)} vote(s) on behalf of '{email}'.", "success")
+    flash(f"Successfully cast {len(selected_candidates)} vote(s) on behalf of '{identifier}'.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+@app.route("/admin/voter_records/update", methods=["POST"])
+@admin_login_required
+def update_voter_record():
+    record_id = request.form.get("record_id", type=int)
+    has_voted = request.form.get("has_voted") == "on"
+    if not record_id:
+        flash("A voter record ID is required.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    voter_record = db.session.get(VoterRecord, record_id)
+    if not voter_record:
+        flash("Voter record not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    voter_record.has_voted = has_voted
+    db.session.add(voter_record)
+    db.session.commit()
+    status_text = "has voted" if has_voted else "not voted"
+    flash(f"Updated voter '{voter_record.identifier}' to {status_text}.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+@app.route("/admin/voter_records/reset", methods=["POST"])
+@admin_login_required
+def reset_voter_records():
+    year = request.form.get("year", "").strip()
+    query = VoterRecord.query.filter_by(has_voted=True)
+    if year:
+        query = query.filter_by(year=year)
+    updated_count = query.update({"has_voted": False}, synchronize_session=False)
+    db.session.commit()
+    if year:
+        flash(f"Reset {updated_count} voter record(s) for {year}.", "success")
+    else:
+        flash(f"Reset {updated_count} voter record(s) across all years.", "success")
     return redirect(url_for("admin_dashboard"))
 
 @app.route("/results")

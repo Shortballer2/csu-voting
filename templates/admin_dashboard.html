@@ -72,7 +72,11 @@
             <div class="row g-3">
                 <div class="col-md-6">
                     <label for="email" class="form-label">Student Email</label>
-                    <input type="email" name="email" id="email" class="form-control" placeholder="student_email@student.csuniv.edu" required>
+                    <input type="email" name="email" id="email" class="form-control" placeholder="student_email@student.csuniv.edu">
+                </div>
+                <div class="col-md-6">
+                    <label for="student_id_number" class="form-label">Student ID Number (optional alternative)</label>
+                    <input type="text" name="student_id_number" id="student_id_number" class="form-control" placeholder="7 to 10 digits" pattern="\d{7,10}">
                 </div>
                 <div class="col-md-6">
                     <label for="manual_vote_year" class="form-label">Class Year</label>
@@ -96,6 +100,65 @@
                 <button type="submit" class="btn btn-primary">Submit Vote</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Election Reset Tools
+    </div>
+    <div class="card-body">
+        <p class="text-muted">Clear voting locks at the start of a new election cycle.</p>
+        <form method="post" action="{{ url_for('reset_voter_records') }}" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label for="reset_year" class="form-label">Reset by Year (optional)</label>
+                <select name="year" id="reset_year" class="form-select">
+                    <option value="">All years</option>
+                    <option value="Freshman">Freshman</option>
+                    <option value="Sophomore">Sophomore</option>
+                    <option value="Junior">Junior</option>
+                    <option value="Senior">Senior</option>
+                </select>
+            </div>
+            <div class="col-md-6 d-grid">
+                <button type="submit" class="btn btn-warning">Clear has_voted Flags</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Edit Individual Voter Record
+    </div>
+    <div class="card-body">
+        {% if voter_records %}
+        <form method="post" action="{{ url_for('update_voter_record') }}" class="row g-3 align-items-end">
+            <div class="col-md-7">
+                <label for="record_id" class="form-label">Voter Record</label>
+                <select name="record_id" id="record_id" class="form-select" required>
+                    {% for record in voter_records %}
+                    <option value="{{ record.id }}">
+                        #{{ record.id }} - {{ record.identifier }} ({{ record.method }}, {{ record.year }}, voted: {{ "yes" if record.has_voted else "no" }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="has_voted" name="has_voted">
+                    <label class="form-check-label" for="has_voted">
+                        Mark as voted
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-outline-primary">Save</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">No voter records yet.</p>
+        {% endif %}
     </div>
 </div>
 
