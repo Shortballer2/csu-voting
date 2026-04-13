@@ -5,7 +5,7 @@
 <div class="card content-card">
     <div class="card-body">
         <h1 class="card-title text-center mb-4">Voter Verification</h1>
-        <p class="text-center text-muted">Choose your ballot, then verify with your official university email or student ID number.</p>
+        <p class="text-center text-muted">Choose your ballot and enter your name, student email, and student ID exactly as listed on the eligible voter roster.</p>
         <form method="post">
             <div class="mb-3">
                 <label for="year" class="form-label">Election / Ballot</label>
@@ -15,6 +15,10 @@
                     <option value="{{ election }}" {% if session.get("year") == election %}selected{% endif %}>{{ election }}</option>
                     {% endfor %}
                 </select>
+            </div>
+            <div class="mb-3">
+                <label for="full_name" class="form-label">Full Name</label>
+                <input type="text" class="form-control" id="full_name" name="full_name" placeholder="Jane Student" required>
             </div>
             <div class="mb-3">
                 <label for="verification_method" class="form-label">Verification Method</label>
@@ -30,9 +34,9 @@
                     <span class="input-group-text">@student.csuniv.edu</span>
                 </div>
             </div>
-            <div class="mb-3 d-none" id="student-id-group">
+            <div class="mb-3" id="student-id-group">
                 <label for="student_id_number" class="form-label">Student ID Number</label>
-                <input type="text" class="form-control" id="student_id_number" name="student_id_number" placeholder="6 digits" pattern="\d{6}" inputmode="numeric" maxlength="6" autocomplete="off">
+                <input type="text" class="form-control" id="student_id_number" name="student_id_number" placeholder="6 digits" pattern="\d{6}" inputmode="numeric" maxlength="6" autocomplete="off" required>
             </div>
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary btn-lg">Continue</button>
@@ -49,8 +53,8 @@
     function toggleMethodFields() {
         const isEmail = methodSelect.value === "email";
         emailInput.required = isEmail;
-        studentIdInput.required = !isEmail;
-        studentIdGroup.classList.toggle("d-none", isEmail);
+        studentIdInput.required = true;
+        studentIdGroup.classList.remove("d-none");
     }
 
     methodSelect.addEventListener("change", toggleMethodFields);
