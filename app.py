@@ -39,7 +39,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]+[a-z][a-z]+@student\.csuniv\.edu$")
-STUDENT_ID_PATTERN = re.compile(r"^\d{7,10}$")
+STUDENT_ID_PATTERN = re.compile(r"^\d{6}$")
 
 # --- Helper Functions ---
 def load_candidates():
@@ -122,7 +122,7 @@ def verify_email():
         if verification_method == "student_id":
             student_id_number = request.form.get("student_id_number", "").strip()
             if not STUDENT_ID_PATTERN.match(student_id_number):
-                flash("Enter a valid student ID number (7 to 10 digits).", "danger")
+                flash("Enter a valid student ID number (6 digits).", "danger")
                 return redirect(url_for("verify_email"))
             voter_record = VoterRecord.query.filter_by(
                 method="student_id",
@@ -314,7 +314,7 @@ def manual_vote():
     identifier = student_id_number or email
     method = "student_id" if student_id_number else "email"
     if method == "student_id" and not STUDENT_ID_PATTERN.match(student_id_number):
-        flash("Student ID number must be 7 to 10 digits.", "danger")
+        flash("Student ID number must be 6 digits.", "danger")
         return redirect(url_for("admin_dashboard"))
     if method == "email":
         if not STUDENT_EMAIL_PATTERN.match(email):
