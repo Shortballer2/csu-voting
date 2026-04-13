@@ -84,23 +84,46 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        Ballot Builder (Form-Style Editor)
+        Ballot Builder (No Coding Required)
     </div>
     <div class="card-body">
+        <p class="text-muted">
+            Build each ballot using plain language. Add questions, set how many choices are allowed, and list options one per line.
+        </p>
         {% for year, ballot in candidates.items() %}
             <h5 class="mt-3">{{ year }}</h5>
-            <form method="post" action="{{ url_for('update_ballot') }}" class="mb-3">
+            <form method="post" action="{{ url_for('update_ballot') }}" class="mb-4 border rounded p-3 bg-light-subtle ballot-builder-form">
                 <input type="hidden" name="ballot_name" value="{{ year }}">
                 <div class="mb-2">
-                    <label class="form-label">Question / Prompt</label>
-                    <input type="text" name="description" class="form-control" value="{{ ballot.description or '' }}" placeholder="e.g., Select up to 3 executive officers.">
+                    <label class="form-label fw-semibold">Ballot Instructions (Optional)</label>
+                    <input type="text" name="description" class="form-control" value="{{ ballot.description or '' }}" placeholder="Example: Select up to 3 executive officers.">
                 </div>
-                <div class="mb-2">
-                    <label class="form-label">Questions Builder (JSON)</label>
-                    <textarea name="questions_json" class="form-control font-monospace" rows="8" placeholder='[{"prompt":"Secretary/Treasurer","max_selections":1,"options":["Name 1","Name 2"]}]'>{{ ballot.questions | tojson(indent=2) }}</textarea>
-                    <div class="form-text">Use an array of question objects with: prompt, max_selections, options.</div>
+                <div class="question-list" data-ballot-name="{{ year }}">
+                    {% for question in ballot.questions %}
+                    <div class="question-editor border rounded p-3 mb-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">Question <span class="question-number">{{ loop.index }}</span></h6>
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-question-btn">Remove</button>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Question Text</label>
+                            <input type="text" name="question_prompt[]" class="form-control" value="{{ question.prompt }}" placeholder="Example: Student Body President" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">How many options can a voter select?</label>
+                            <input type="number" min="1" step="1" name="question_max_selections[]" class="form-control" value="{{ question.max_selections }}" required>
+                        </div>
+                        <div>
+                            <label class="form-label">Options (one per line)</label>
+                            <textarea name="question_options[]" class="form-control" rows="5" placeholder="Option 1&#10;Option 2&#10;Option 3">{{ question.options | join('\n') }}</textarea>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
-                <button type="submit" class="btn btn-outline-primary btn-sm">Save Ballot Builder Settings</button>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm add-question-btn">+ Add Question</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Save Ballot Builder</button>
+                </div>
             </form>
             {% if ballot.questions %}
             <ul class="list-group">
@@ -236,6 +259,7 @@
     const candidates = {{ candidates | tojson }};
     const yearSelect = document.getElementById('manual_vote_year');
     const checkboxWrapper = document.getElementById('candidate_checkbox_wrapper');
+    const ballotBuilderForms = document.querySelectorAll('.ballot-builder-form');
 
     function updateSelectionState() {
         const questionCards = checkboxWrapper.querySelectorAll('[data-question-index]');
@@ -314,5 +338,65 @@
 
     yearSelect.addEventListener('change', updateCandidateCheckboxes);
     document.addEventListener('DOMContentLoaded', updateCandidateCheckboxes);
+
+    function renumberQuestions(questionList) {
+        const editors = questionList.querySelectorAll('.question-editor');
+        editors.forEach((editor, index) => {
+            const numberEl = editor.querySelector('.question-number');
+            if (numberEl) numberEl.textContent = String(index + 1);
+            const removeBtn = editor.querySelector('.remove-question-btn');
+            if (removeBtn) {
+                removeBtn.disabled = editors.length === 1;
+            }
+        });
+    }
+
+    function createQuestionEditor(questionNumber) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'question-editor border rounded p-3 mb-3 bg-white';
+        wrapper.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Question <span class="question-number">${questionNumber}</span></h6>
+                <button type="button" class="btn btn-sm btn-outline-danger remove-question-btn">Remove</button>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Question Text</label>
+                <input type="text" name="question_prompt[]" class="form-control" placeholder="Example: Student Body President" required>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">How many options can a voter select?</label>
+                <input type="number" min="1" step="1" name="question_max_selections[]" class="form-control" value="1" required>
+            </div>
+            <div>
+                <label class="form-label">Options (one per line)</label>
+                <textarea name="question_options[]" class="form-control" rows="5" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+            </div>
+        `;
+        return wrapper;
+    }
+
+    ballotBuilderForms.forEach((form) => {
+        const questionList = form.querySelector('.question-list');
+        const addBtn = form.querySelector('.add-question-btn');
+        if (!questionList || !addBtn) return;
+
+        form.addEventListener('click', (event) => {
+            if (event.target.classList.contains('remove-question-btn')) {
+                const editor = event.target.closest('.question-editor');
+                if (editor) {
+                    editor.remove();
+                    renumberQuestions(questionList);
+                }
+            }
+        });
+
+        addBtn.addEventListener('click', () => {
+            const nextNumber = questionList.querySelectorAll('.question-editor').length + 1;
+            questionList.appendChild(createQuestionEditor(nextNumber));
+            renumberQuestions(questionList);
+        });
+
+        renumberQuestions(questionList);
+    });
 </script>
 {% endblock %}
