@@ -4,8 +4,11 @@
 {% block content %}
 <div class="card content-card">
     <div class="card-body">
-        <h1 class="card-title text-center mb-4">Vote for Candidates</h1>
-        <p class="text-center text-muted">You may select up to 10 candidates. Your vote is final.</p>
+        <h1 class="card-title text-center mb-2">{{ ballot_name }}</h1>
+        {% if ballot_description %}
+        <p class="text-center text-muted">{{ ballot_description }}</p>
+        {% endif %}
+        <p class="text-center text-muted">You may select up to {{ max_selections }} options. Your vote is final.</p>
         <form method="post">
             <div class="mb-3">
                 {% if candidates %}
@@ -18,16 +21,16 @@
                     </div>
                     {% endfor %}
                 {% else %}
-                    <p class="text-center">There are no candidates running for this year.</p>
+                    <p class="text-center">There are no options configured for this ballot yet.</p>
                 {% endif %}
             </div>
             
             <hr>
 
             <div class="mb-3">
-                <label for="write_in_candidate" class="form-label fw-bold">Write-in Candidate (Optional)</label>
+                <label for="write_in_candidate" class="form-label fw-bold">Write-in Option (Optional)</label>
                 <input type="text" class="form-control" name="write_in_candidate" id="write_in_candidate" placeholder="Enter a name">
-                <div class="form-text">A write-in counts as one of your 10 total selections.</div>
+                <div class="form-text">A write-in counts as one of your {{ max_selections }} total selections.</div>
             </div>
 
             <div class="d-grid mt-4">
