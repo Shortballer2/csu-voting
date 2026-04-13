@@ -3,6 +3,7 @@ import json
 import random
 import smtplib
 import ssl
+import re
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -37,6 +38,7 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp-mail.outlook.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
+STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]+[a-z][a-z]+@student\.csuniv\.edu$")
 
 # --- Helper Functions ---
 def load_candidates():
@@ -116,8 +118,11 @@ def verify_email():
         return redirect(url_for("index"))
     if request.method == "POST":
         email = request.form["email"].strip().lower()
-        if not email.endswith("@student.csuniv.edu"):
-            flash("You must use your CSU student email (@student.csuniv.edu).", "danger")
+        if not STUDENT_EMAIL_PATTERN.match(email):
+            flash(
+                "Use your CSU student email in this format: firstnamemiddleinitiallastname@student.csuniv.edu.",
+                "danger",
+            )
             return redirect(url_for("verify_email"))
         student = Student.query.filter_by(email=email).first()
         if not student:
