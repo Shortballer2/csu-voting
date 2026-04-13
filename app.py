@@ -4,6 +4,7 @@ import random
 import smtplib
 import ssl
 import re
+import io
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -11,8 +12,9 @@ from functools import wraps
 from dotenv import load_dotenv
 
 # --- Database and App Setup ---
-from models import db, Student, Vote, VoterRecord
+from models import db, Student, Vote, VoterRecord, EligibleVoter
 from sqlalchemy import func
+from pypdf import PdfReader
 
 load_dotenv("csu-voting.env", override=True)
 
@@ -143,8 +145,40 @@ def normalize_student_email(value):
 def normalize_student_id(value):
     return re.sub(r"\D", "", (value or "").strip())
 
+def normalize_name(value):
+    return " ".join((value or "").strip().lower().split())
+
 def parse_options(text):
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+def parse_eligible_voters_pdf(file_storage):
+    reader = PdfReader(io.BytesIO(file_storage.read()))
+    parsed_rows = []
+    for page in reader.pages:
+        page_text = page.extract_text() or ""
+        for raw_line in page_text.splitlines():
+            line = " ".join(raw_line.split())
+            if not line:
+                continue
+            columns = [col.strip() for col in re.split(r"[,\t|]+", line) if col.strip()]
+            if len(columns) < 3:
+                continue
+            email = next((col for col in columns if STUDENT_EMAIL_PATTERN.match(normalize_student_email(col))), "")
+            student_id = next((normalize_student_id(col) for col in columns if STUDENT_ID_PATTERN.match(normalize_student_id(col))), "")
+            if not email or not student_id:
+                continue
+            name_parts = [col for col in columns if col != email and normalize_student_id(col) != student_id]
+            full_name = " ".join(name_parts).strip()
+            if not full_name:
+                continue
+            parsed_rows.append(
+                {
+                    "full_name": full_name,
+                    "email": normalize_student_email(email),
+                    "student_id": student_id,
+                }
+            )
+    return parsed_rows
 
 
 
@@ -277,12 +311,33 @@ def verify_email():
             flash("Please choose a valid ballot.", "warning")
             return redirect(url_for("verify_email"))
         session["year"] = selected_election
+        full_name = (request.form.get("full_name") or "").strip()
+        normalized_full_name = normalize_name(full_name)
+        email = normalize_student_email(request.form.get("email"))
+        student_id_number = normalize_student_id(request.form.get("student_id_number"))
+        if len(normalized_full_name) < 3:
+            flash("Enter your full name exactly as listed in the voter roster.", "danger")
+            return redirect(url_for("verify_email"))
+        if not STUDENT_EMAIL_PATTERN.match(email):
+            flash(
+                "Use your CSU student email in this format: firstnamemiddleinitiallastname@student.csuniv.edu.",
+                "danger",
+            )
+            return redirect(url_for("verify_email"))
+        if not STUDENT_ID_PATTERN.match(student_id_number):
+            flash("Enter a valid student ID number (6 digits).", "danger")
+            return redirect(url_for("verify_email"))
+        eligible_voter = EligibleVoter.query.filter_by(
+            year=selected_election,
+            email=email,
+            student_id=student_id_number,
+        ).first()
+        if not eligible_voter or normalize_name(eligible_voter.full_name) != normalized_full_name:
+            flash("Your details could not be verified against the eligible voter list.", "danger")
+            return redirect(url_for("verify_email"))
+
         verification_method = request.form.get("verification_method", "email")
         if verification_method == "student_id":
-            student_id_number = normalize_student_id(request.form.get("student_id_number"))
-            if not STUDENT_ID_PATTERN.match(student_id_number):
-                flash("Enter a valid student ID number (6 digits).", "danger")
-                return redirect(url_for("verify_email"))
             voter_record = VoterRecord.query.filter_by(
                 method="student_id",
                 identifier=student_id_number,
@@ -302,13 +357,6 @@ def verify_email():
             session.pop("otp", None)
             session.pop("email", None)
             return redirect(url_for("vote"))
-        email = normalize_student_email(request.form.get("email"))
-        if not STUDENT_EMAIL_PATTERN.match(email):
-            flash(
-                "Use your CSU student email in this format: firstnamemiddleinitiallastname@student.csuniv.edu.",
-                "danger",
-            )
-            return redirect(url_for("verify_email"))
         student = Student.query.filter_by(email=email).first()
         if not student:
             student = Student(email=email, year=session["year"])
@@ -424,13 +472,60 @@ def admin_logout():
 def admin_dashboard():
     candidates = load_candidates()
     voter_records = VoterRecord.query.order_by(VoterRecord.id.desc()).limit(100).all()
+    roster_counts = dict(
+        db.session.query(EligibleVoter.year, func.count(EligibleVoter.id))
+        .group_by(EligibleVoter.year)
+        .all()
+    )
     election_names = list(candidates.keys())
     return render_template(
         "admin_dashboard.html",
         candidates=candidates,
         voter_records=voter_records,
         election_names=election_names,
+        roster_counts=roster_counts,
     )
+
+@app.route("/admin/eligible_voters/upload", methods=["POST"])
+@admin_login_required
+def upload_eligible_voters():
+    year = request.form.get("year", "").strip()
+    pdf_file = request.files.get("eligible_voters_pdf")
+    if not year:
+        flash("Election / ballot is required.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    if not pdf_file or not pdf_file.filename.lower().endswith(".pdf"):
+        flash("Please upload a PDF file.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        parsed_rows = parse_eligible_voters_pdf(pdf_file)
+    except Exception:
+        flash("Could not read the PDF. Please upload a text-based PDF roster.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    if not parsed_rows:
+        flash("No valid voters were found. Expected rows with name, email, and 6-digit student ID.", "warning")
+        return redirect(url_for("admin_dashboard"))
+
+    EligibleVoter.query.filter_by(year=year).delete(synchronize_session=False)
+    seen = set()
+    inserted = 0
+    for row in parsed_rows:
+        key = (row["email"], row["student_id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        db.session.add(
+            EligibleVoter(
+                year=year,
+                full_name=row["full_name"],
+                email=row["email"],
+                student_id=row["student_id"],
+            )
+        )
+        inserted += 1
+    db.session.commit()
+    flash(f"Uploaded {inserted} eligible voter records for '{year}'.", "success")
+    return redirect(url_for("admin_dashboard"))
 
 @app.route("/admin/election/add", methods=["POST"])
 @admin_login_required

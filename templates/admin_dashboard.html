@@ -59,24 +59,25 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        Quick Add Voting Option
+        Eligible Voter Roster Upload (PDF)
     </div>
     <div class="card-body">
-        <form class="row g-3 align-items-end" method="post" action="{{ url_for('add_candidate') }}">
+        <p class="text-muted">Upload a text-based PDF with rows containing voter name, CSU email, and 6-digit student ID.</p>
+        <form class="row g-3 align-items-end" method="post" action="{{ url_for('upload_eligible_voters') }}" enctype="multipart/form-data">
             <div class="col-md-5">
-                <label for="year" class="form-label">Election / Ballot</label>
-                <select name="year" id="year" class="form-select" required>
+                <label for="roster_year" class="form-label">Election / Ballot</label>
+                <select name="year" id="roster_year" class="form-select" required>
                     {% for election in election_names %}
-                    <option value="{{ election }}">{{ election }}</option>
+                    <option value="{{ election }}">{{ election }}{% if roster_counts.get(election) %} ({{ roster_counts.get(election) }} loaded){% endif %}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="col-md-5">
-                <label for="name" class="form-label">Option Label</label>
-                <input type="text" name="name" id="name" class="form-control" required>
+                <label for="eligible_voters_pdf" class="form-label">Roster PDF</label>
+                <input type="file" name="eligible_voters_pdf" id="eligible_voters_pdf" class="form-control" accept="application/pdf" required>
             </div>
             <div class="col-md-2 d-grid">
-                <button type="submit" class="btn btn-success">Add</button>
+                <button type="submit" class="btn btn-success">Upload</button>
             </div>
         </form>
     </div>
