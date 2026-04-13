@@ -117,6 +117,16 @@
                             <label class="form-label">Options (one per line)</label>
                             <textarea name="question_options[]" class="form-control" rows="5" placeholder="Option 1&#10;Option 2&#10;Option 3">{{ question.options | join('\n') }}</textarea>
                         </div>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-6">
+                                <label class="form-label">Show only if question #</label>
+                                <input type="number" min="1" step="1" name="question_show_if_question[]" class="form-control" value="{{ question.show_if.question_number if question.show_if else '' }}" placeholder="Leave blank for always visible">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">...includes this option</label>
+                                <input type="text" name="question_show_if_option[]" class="form-control" value="{{ question.show_if.option if question.show_if else '' }}" placeholder="Exact option text">
+                            </div>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -130,6 +140,9 @@
                 {% for question in ballot.questions %}
                 <li class="list-group-item">
                     <div class="fw-bold">{{ loop.index }}. {{ question.prompt }} <span class="text-muted">(max: {{ question.max_selections }})</span></div>
+                    {% if question.show_if %}
+                    <div class="small text-info">Shown only when Question {{ question.show_if.question_number }} includes "{{ question.show_if.option }}".</div>
+                    {% endif %}
                     {% if question.options %}
                     <div class="small mt-1">{{ question.options | join(", ") }}</div>
                     {% else %}
@@ -264,14 +277,36 @@
     function updateSelectionState() {
         const questionCards = checkboxWrapper.querySelectorAll('[data-question-index]');
         questionCards.forEach((card) => {
+            const showIfQuestion = card.dataset.showIfQuestion;
+            const showIfOption = card.dataset.showIfOption;
+            let visible = true;
+            if (showIfQuestion !== undefined && showIfOption) {
+                const selector = `input[name="question_${showIfQuestion}_candidates"]`;
+                const parentChoices = Array.from(checkboxWrapper.querySelectorAll(selector))
+                    .filter((input) => input.checked)
+                    .map((input) => input.value);
+                visible = parentChoices.includes(showIfOption);
+            }
+
+            card.style.display = visible ? '' : 'none';
+            card.querySelectorAll('input, textarea, select').forEach((input) => {
+                input.disabled = !visible;
+                if (!visible && input.type === 'checkbox') {
+                    input.checked = false;
+                }
+                if (!visible && input.type === 'text') {
+                    input.value = '';
+                }
+            });
+
             const maxSelections = Number(card.dataset.maxSelections || 1);
             const checkedCount = card.querySelectorAll('input[type="checkbox"]:checked').length;
             card.querySelector('.selected-count').textContent = checkedCount;
             card.querySelector('.max-count').textContent = maxSelections;
-            const disableUnchecked = checkedCount >= maxSelections;
+            const disableUnchecked = visible && checkedCount >= maxSelections;
             card.querySelectorAll('input[type="checkbox"]').forEach((input) => {
                 if (!input.checked) {
-                    input.disabled = disableUnchecked;
+                    input.disabled = input.disabled || disableUnchecked;
                 }
             });
         });
@@ -290,6 +325,10 @@
                 card.className = 'border rounded p-3 mb-3';
                 card.dataset.questionIndex = String(questionIndex);
                 card.dataset.maxSelections = String(question.max_selections || 1);
+                if (question.show_if && question.show_if.question_number && question.show_if.option) {
+                    card.dataset.showIfQuestion = String(Number(question.show_if.question_number) - 1);
+                    card.dataset.showIfOption = question.show_if.option;
+                }
 
                 const title = document.createElement('h6');
                 title.textContent = `${questionIndex + 1}. ${question.prompt}`;
@@ -370,6 +409,16 @@
             <div>
                 <label class="form-label">Options (one per line)</label>
                 <textarea name="question_options[]" class="form-control" rows="5" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-6">
+                    <label class="form-label">Show only if question #</label>
+                    <input type="number" min="1" step="1" name="question_show_if_question[]" class="form-control" placeholder="Leave blank for always visible">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">...includes this option</label>
+                    <input type="text" name="question_show_if_option[]" class="form-control" placeholder="Exact option text">
+                </div>
             </div>
         `;
         return wrapper;

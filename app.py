@@ -90,17 +90,19 @@ def load_candidates():
                 for question in questions:
                     if not isinstance(question, dict):
                         continue
-                    normalized_questions.append(
-                        {
-                            "prompt": (question.get("prompt") or "Question").strip(),
-                            "max_selections": validate_max_selections(question.get("max_selections"), default=1),
-                            "options": [
-                                str(option).strip()
-                                for option in question.get("options", [])
-                                if str(option).strip()
-                            ],
-                        }
-                    )
+                    normalized_question = {
+                        "prompt": (question.get("prompt") or "Question").strip(),
+                        "max_selections": validate_max_selections(question.get("max_selections"), default=1),
+                        "options": [
+                            str(option).strip()
+                            for option in question.get("options", [])
+                            if str(option).strip()
+                        ],
+                    }
+                    show_if = parse_show_if_rule(question)
+                    if show_if:
+                        normalized_question["show_if"] = show_if
+                    normalized_questions.append(normalized_question)
                 if not normalized_questions:
                     normalized_questions = [
                         {
@@ -144,6 +146,35 @@ def normalize_student_id(value):
 def parse_options(text):
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
 
+
+
+def parse_show_if_rule(question):
+    if not isinstance(question, dict):
+        return None
+    show_if = question.get("show_if")
+    if not isinstance(show_if, dict):
+        return None
+    question_number = show_if.get("question_number")
+    option = str(show_if.get("option") or "").strip()
+    try:
+        question_number = int(question_number)
+    except (TypeError, ValueError):
+        return None
+    if question_number < 1 or not option:
+        return None
+    return {"question_number": question_number, "option": option}
+
+
+def question_is_visible(question, answers_by_index):
+    show_if = question.get("show_if")
+    if not isinstance(show_if, dict):
+        return True
+    parent_index = int(show_if.get("question_number", 0)) - 1
+    option = str(show_if.get("option") or "").strip()
+    if parent_index < 0 or not option:
+        return True
+    return option in answers_by_index.get(parent_index, [])
+
 def parse_questions_json(text):
     try:
         parsed = json.loads(text or "[]")
@@ -162,13 +193,15 @@ def parse_questions_json(text):
             for option in question.get("options", [])
             if str(option).strip()
         ]
-        normalized_questions.append(
-            {
-                "prompt": prompt,
-                "max_selections": max_selections,
-                "options": options,
-            }
-        )
+        normalized_question = {
+            "prompt": prompt,
+            "max_selections": max_selections,
+            "options": options,
+        }
+        show_if = parse_show_if_rule(question)
+        if show_if:
+            normalized_question["show_if"] = show_if
+        normalized_questions.append(normalized_question)
     return normalized_questions
 
 def save_candidates(data):
@@ -329,7 +362,10 @@ def vote():
     questions = ballot.get("questions", [])
     if request.method == "POST":
         selected_candidates = []
+        answers_by_index = {}
         for index, question in enumerate(questions):
+            if not question_is_visible(question, answers_by_index):
+                continue
             question_choices = request.form.getlist(f"question_{index}_candidates")
             write_in = request.form.get(f"question_{index}_write_in", "").strip()
             if write_in:
@@ -341,6 +377,7 @@ def vote():
                     "warning",
                 )
                 return redirect(url_for("vote"))
+            answers_by_index[index] = question_choices
             selected_candidates.extend(question_choices)
         if not selected_candidates:
             flash("You must answer at least one question option to vote.", "warning")
@@ -536,7 +573,10 @@ def manual_vote():
     # Get checked candidates from the form
     ballot = candidates[year]
     selected_candidates = []
+    answers_by_index = {}
     for index, question in enumerate(ballot.get("questions", [])):
+        if not question_is_visible(question, answers_by_index):
+            continue
         question_choices = request.form.getlist(f"question_{index}_candidates")
         write_in = request.form.get(f"question_{index}_write_in", "").strip()
         if write_in:
@@ -548,6 +588,7 @@ def manual_vote():
                 "warning",
             )
             return redirect(url_for("admin_dashboard"))
+        answers_by_index[index] = question_choices
         selected_candidates.extend(question_choices)
     if not selected_candidates:
         flash("You must select at least one option to vote.", "warning")
@@ -639,7 +680,9 @@ def update_ballot():
     prompts = request.form.getlist("question_prompt[]")
     max_values = request.form.getlist("question_max_selections[]")
     option_blocks = request.form.getlist("question_options[]")
-    for index in range(max(len(prompts), len(max_values), len(option_blocks))):
+    show_if_questions = request.form.getlist("question_show_if_question[]")
+    show_if_options = request.form.getlist("question_show_if_option[]")
+    for index in range(max(len(prompts), len(max_values), len(option_blocks), len(show_if_questions), len(show_if_options))):
         prompt = (prompts[index] if index < len(prompts) else "").strip()
         options_text = option_blocks[index] if index < len(option_blocks) else ""
         options = parse_options(options_text)
@@ -651,13 +694,22 @@ def update_ballot():
             continue
         if not prompt:
             prompt = f"Question {len(questions) + 1}"
-        questions.append(
-            {
-                "prompt": prompt,
-                "max_selections": max_selections,
-                "options": options,
-            }
-        )
+        question_data = {
+            "prompt": prompt,
+            "max_selections": max_selections,
+            "options": options,
+        }
+        show_if_question = (show_if_questions[index] if index < len(show_if_questions) else "").strip()
+        show_if_option = (show_if_options[index] if index < len(show_if_options) else "").strip()
+        if show_if_question or show_if_option:
+            show_if = parse_show_if_rule(
+                {"show_if": {"question_number": show_if_question, "option": show_if_option}}
+            )
+            if show_if is None:
+                flash(f"Question {index + 1} has an invalid conditional branch rule.", "danger")
+                return redirect(url_for("admin_dashboard"))
+            question_data["show_if"] = show_if
+        questions.append(question_data)
 
     if not questions:
         # Backward compatibility for previous JSON-only editor UI.
