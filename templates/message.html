@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <h2>{{ title or "Notice" }}</h2>
+  <p>{{ message or "An update is available." }}</p>
+  <a class="btn" href="{{ url_for('verify_email') }}">Back to verification</a>
+</section>
+{% endblock %}
