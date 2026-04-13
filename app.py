@@ -630,15 +630,45 @@ def reset_voter_records():
 def update_ballot():
     ballot_name = request.form.get("ballot_name", "").strip()
     description = (request.form.get("description") or "").strip()
-    questions_json = request.form.get("questions_json", "")
-    questions = parse_questions_json(questions_json)
     candidates = load_candidates()
     if ballot_name not in candidates:
         flash("Selected ballot was not found.", "danger")
         return redirect(url_for("admin_dashboard"))
-    if questions is None:
-        flash("Questions must be valid JSON.", "danger")
-        return redirect(url_for("admin_dashboard"))
+
+    questions = []
+    prompts = request.form.getlist("question_prompt[]")
+    max_values = request.form.getlist("question_max_selections[]")
+    option_blocks = request.form.getlist("question_options[]")
+    for index in range(max(len(prompts), len(max_values), len(option_blocks))):
+        prompt = (prompts[index] if index < len(prompts) else "").strip()
+        options_text = option_blocks[index] if index < len(option_blocks) else ""
+        options = parse_options(options_text)
+        max_selections = validate_max_selections(
+            max_values[index] if index < len(max_values) else None,
+            default=1,
+        )
+        if not prompt and not options:
+            continue
+        if not prompt:
+            prompt = f"Question {len(questions) + 1}"
+        questions.append(
+            {
+                "prompt": prompt,
+                "max_selections": max_selections,
+                "options": options,
+            }
+        )
+
+    if not questions:
+        # Backward compatibility for previous JSON-only editor UI.
+        questions_json = request.form.get("questions_json", "")
+        if questions_json:
+            parsed_json_questions = parse_questions_json(questions_json)
+            if parsed_json_questions is None:
+                flash("Questions must be valid JSON.", "danger")
+                return redirect(url_for("admin_dashboard"))
+            questions = parsed_json_questions
+
     if not questions:
         flash("At least one question is required for a ballot.", "danger")
         return redirect(url_for("admin_dashboard"))
