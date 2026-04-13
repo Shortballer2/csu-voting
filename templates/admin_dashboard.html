@@ -96,21 +96,33 @@
                     <input type="text" name="description" class="form-control" value="{{ ballot.description or '' }}" placeholder="e.g., Select up to 3 executive officers.">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label">Max Selections</label>
-                    <input type="number" min="1" name="max_selections" class="form-control" value="{{ ballot.max_selections or 10 }}" required>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label">Options (one per line)</label>
-                    <textarea name="options_text" class="form-control" rows="4" placeholder="Option A&#10;Option B&#10;Option C">{% for name in ballot.options %}{{ name }}{% if not loop.last %}
-{% endif %}{% endfor %}</textarea>
+                    <label class="form-label">Questions Builder (JSON)</label>
+                    <textarea name="questions_json" class="form-control font-monospace" rows="8" placeholder='[{"prompt":"Secretary/Treasurer","max_selections":1,"options":["Name 1","Name 2"]}]'>{{ ballot.questions | tojson(indent=2) }}</textarea>
+                    <div class="form-text">Use an array of question objects with: prompt, max_selections, options.</div>
                 </div>
                 <button type="submit" class="btn btn-outline-primary btn-sm">Save Ballot Builder Settings</button>
             </form>
-            {% if ballot.options %}
+            {% if ballot.questions %}
             <ul class="list-group">
-                {% for name in ballot.options %}
+                {% for question in ballot.questions %}
+                <li class="list-group-item">
+                    <div class="fw-bold">{{ loop.index }}. {{ question.prompt }} <span class="text-muted">(max: {{ question.max_selections }})</span></div>
+                    {% if question.options %}
+                    <div class="small mt-1">{{ question.options | join(", ") }}</div>
+                    {% else %}
+                    <div class="small text-muted mt-1">No options yet.</div>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted">No questions listed for this ballot.</p>
+            {% endif %}
+            {% if ballot.questions and ballot.questions[0].options %}
+            <ul class="list-group mt-2">
+                {% for name in ballot.questions[0].options %}
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    {{ name }}
+                    Question 1 option: {{ name }}
                     <form method="post" action="{{ url_for('delete_candidate') }}">
                         <input type="hidden" name="year" value="{{ year }}">
                         <input type="hidden" name="name" value="{{ name }}">
@@ -119,8 +131,6 @@
                 </li>
                 {% endfor %}
             </ul>
-            {% else %}
-            <p class="text-muted">No options listed for this ballot.</p>
             {% endif %}
             <hr>
         {% endfor %}
@@ -156,12 +166,7 @@
             </div>
             <hr class="my-4">
             <h5 id="selection-title">Select Options</h5>
-            <p class="text-muted mb-2">Selected: <span id="selected-count">0</span>/<span id="max-count">10</span></p>
             <div id="candidate_checkbox_wrapper" class="mb-3"></div>
-            <div class="mb-3">
-                <label for="write_in_name" class="form-label fw-bold">Write-in Candidate (Optional)</label>
-                <input type="text" class="form-control" name="write_in_name" id="write_in_name" placeholder="Enter a name">
-            </div>
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary">Submit Vote</button>
             </div>
@@ -233,51 +238,76 @@
     const checkboxWrapper = document.getElementById('candidate_checkbox_wrapper');
 
     function updateSelectionState() {
-        const selectedYear = yearSelect.value;
-        const maxSelections = (candidates[selectedYear] && candidates[selectedYear].max_selections) ? candidates[selectedYear].max_selections : 10;
-        const selected = checkboxWrapper.querySelectorAll('input[type="checkbox"]:checked').length;
-        document.getElementById('max-count').textContent = maxSelections;
-        document.getElementById('selected-count').textContent = selected;
-        const disableUnchecked = selected >= maxSelections;
-        checkboxWrapper.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-            if (!input.checked) {
-                input.disabled = disableUnchecked;
-            }
+        const questionCards = checkboxWrapper.querySelectorAll('[data-question-index]');
+        questionCards.forEach((card) => {
+            const maxSelections = Number(card.dataset.maxSelections || 1);
+            const checkedCount = card.querySelectorAll('input[type="checkbox"]:checked').length;
+            card.querySelector('.selected-count').textContent = checkedCount;
+            card.querySelector('.max-count').textContent = maxSelections;
+            const disableUnchecked = checkedCount >= maxSelections;
+            card.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                if (!input.checked) {
+                    input.disabled = disableUnchecked;
+                }
+            });
         });
     }
 
     function updateCandidateCheckboxes() {
         const selectedYear = yearSelect.value;
-        const yearCandidates = (candidates[selectedYear] && candidates[selectedYear].options) ? candidates[selectedYear].options : [];
-        const maxSelections = (candidates[selectedYear] && candidates[selectedYear].max_selections) ? candidates[selectedYear].max_selections : 10;
-        document.getElementById('selection-title').textContent = `Select Options (up to ${maxSelections})`;
+        const questions = (candidates[selectedYear] && candidates[selectedYear].questions) ? candidates[selectedYear].questions : [];
+        document.getElementById('selection-title').textContent = `Select Options`;
         
         checkboxWrapper.innerHTML = ''; // Clear previous checkboxes
         
-        if (yearCandidates.length > 0) {
-            yearCandidates.forEach((candidate, index) => {
-                const div = document.createElement('div');
-                div.className = 'form-check fs-5 my-2';
-                
-                const input = document.createElement('input');
-                input.className = 'form-check-input';
-                input.type = 'checkbox';
-                input.name = 'candidates';
-                input.value = candidate;
-                input.id = `manual-candidate-${index}`;
-                input.addEventListener('change', updateSelectionState);
-                
-                const label = document.createElement('label');
-                label.className = 'form-check-label';
-                label.htmlFor = `manual-candidate-${index}`;
-                label.textContent = candidate;
-                
-                div.appendChild(input);
-                div.appendChild(label);
-                checkboxWrapper.appendChild(div);
+        if (questions.length > 0) {
+            questions.forEach((question, questionIndex) => {
+                const card = document.createElement('div');
+                card.className = 'border rounded p-3 mb-3';
+                card.dataset.questionIndex = String(questionIndex);
+                card.dataset.maxSelections = String(question.max_selections || 1);
+
+                const title = document.createElement('h6');
+                title.textContent = `${questionIndex + 1}. ${question.prompt}`;
+                card.appendChild(title);
+
+                const counts = document.createElement('p');
+                counts.className = 'text-muted mb-2';
+                counts.innerHTML = 'Selected: <span class="selected-count">0</span>/<span class="max-count"></span>';
+                card.appendChild(counts);
+
+                (question.options || []).forEach((candidate, optionIndex) => {
+                    const div = document.createElement('div');
+                    div.className = 'form-check my-2';
+
+                    const input = document.createElement('input');
+                    input.className = 'form-check-input';
+                    input.type = 'checkbox';
+                    input.name = `question_${questionIndex}_candidates`;
+                    input.value = candidate;
+                    input.id = `manual-question-${questionIndex}-option-${optionIndex}`;
+                    input.addEventListener('change', updateSelectionState);
+
+                    const label = document.createElement('label');
+                    label.className = 'form-check-label';
+                    label.htmlFor = input.id;
+                    label.textContent = candidate;
+
+                    div.appendChild(input);
+                    div.appendChild(label);
+                    card.appendChild(div);
+                });
+
+                const writeInWrap = document.createElement('div');
+                writeInWrap.className = 'mt-2';
+                writeInWrap.innerHTML = `<label class="form-label fw-bold" for="manual-question-${questionIndex}-writein">Write-in (Optional)</label>
+                    <input type="text" class="form-control" name="question_${questionIndex}_write_in" id="manual-question-${questionIndex}-writein" placeholder="Enter a name">`;
+                card.appendChild(writeInWrap);
+
+                checkboxWrapper.appendChild(card);
             });
         } else {
-            checkboxWrapper.innerHTML = '<p class="text-muted">No options configured for this ballot.</p>';
+            checkboxWrapper.innerHTML = '<p class="text-muted">No questions configured for this ballot.</p>';
         }
         updateSelectionState();
     }

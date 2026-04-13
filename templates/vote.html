@@ -8,30 +8,31 @@
         {% if ballot_description %}
         <p class="text-center text-muted">{{ ballot_description }}</p>
         {% endif %}
-        <p class="text-center text-muted">You may select up to {{ max_selections }} options. Your vote is final.</p>
+        <p class="text-center text-muted">Answer each question below. Your vote is final.</p>
         <form method="post">
-            <div class="mb-3">
-                {% if candidates %}
-                    {% for candidate in candidates %}
-                    <div class="form-check fs-5 my-3">
-                        <input class="form-check-input" type="checkbox" name="candidates" value="{{ candidate }}" id="candidate-{{ loop.index }}">
-                        <label class="form-check-label" for="candidate-{{ loop.index }}">
-                            {{ candidate }}
+            {% if questions %}
+                {% for question in questions %}
+                <div class="mb-4">
+                    <h5>{{ loop.index }}. {{ question.prompt }}</h5>
+                    <p class="text-muted">Select up to {{ question.max_selections }} option(s).</p>
+                    {% for option in question.options %}
+                    <div class="form-check fs-5 my-2">
+                        <input class="form-check-input" type="checkbox" name="question_{{ loop.parent.index0 }}_candidates" value="{{ option }}" id="question-{{ loop.parent.index0 }}-option-{{ loop.index }}">
+                        <label class="form-check-label" for="question-{{ loop.parent.index0 }}-option-{{ loop.index }}">
+                            {{ option }}
                         </label>
                     </div>
                     {% endfor %}
-                {% else %}
-                    <p class="text-center">There are no options configured for this ballot yet.</p>
-                {% endif %}
-            </div>
-            
-            <hr>
-
-            <div class="mb-3">
-                <label for="write_in_candidate" class="form-label fw-bold">Write-in Option (Optional)</label>
-                <input type="text" class="form-control" name="write_in_candidate" id="write_in_candidate" placeholder="Enter a name">
-                <div class="form-text">A write-in counts as one of your {{ max_selections }} total selections.</div>
-            </div>
+                    <div class="mt-2">
+                        <label for="question_{{ loop.index0 }}_write_in" class="form-label fw-bold">Write-in (Optional)</label>
+                        <input type="text" class="form-control" name="question_{{ loop.index0 }}_write_in" id="question_{{ loop.index0 }}_write_in" placeholder="Enter a name">
+                    </div>
+                </div>
+                <hr>
+                {% endfor %}
+            {% else %}
+                <p class="text-center">There are no questions configured for this ballot yet.</p>
+            {% endif %}
 
             <div class="d-grid mt-4">
                 <button type="submit" class="btn btn-success btn-lg">Submit Vote</button>

@@ -48,8 +48,13 @@ def load_candidates():
         default_ballots = {
             "General Election": {
                 "description": "Select up to 10 options.",
-                "max_selections": 10,
-                "options": [],
+                "questions": [
+                    {
+                        "prompt": "Question 1",
+                        "max_selections": 10,
+                        "options": [],
+                    }
+                ],
             }
         }
         save_candidates(default_ballots)
@@ -62,25 +67,63 @@ def load_candidates():
             if isinstance(ballot_data, list):
                 normalized_data[ballot_name] = {
                     "description": "",
-                    "max_selections": 10,
-                    "options": ballot_data,
+                    "questions": [
+                        {
+                            "prompt": "Question 1",
+                            "max_selections": 10,
+                            "options": ballot_data,
+                        }
+                    ],
                 }
             elif isinstance(ballot_data, dict):
+                questions = ballot_data.get("questions")
+                if not isinstance(questions, list):
+                    legacy_options = ballot_data.get("options", [])
+                    questions = [
+                        {
+                            "prompt": "Question 1",
+                            "max_selections": ballot_data.get("max_selections", 10),
+                            "options": legacy_options,
+                        }
+                    ]
+                normalized_questions = []
+                for question in questions:
+                    if not isinstance(question, dict):
+                        continue
+                    normalized_questions.append(
+                        {
+                            "prompt": (question.get("prompt") or "Question").strip(),
+                            "max_selections": validate_max_selections(question.get("max_selections"), default=1),
+                            "options": [
+                                str(option).strip()
+                                for option in question.get("options", [])
+                                if str(option).strip()
+                            ],
+                        }
+                    )
+                if not normalized_questions:
+                    normalized_questions = [
+                        {
+                            "prompt": "Question 1",
+                            "max_selections": 10,
+                            "options": [],
+                        }
+                    ]
                 normalized_data[ballot_name] = {
                     "description": (ballot_data.get("description") or "").strip(),
-                    "max_selections": max(1, int(ballot_data.get("max_selections", 10))),
-                    "options": [
-                        str(option).strip()
-                        for option in ballot_data.get("options", [])
-                        if str(option).strip()
-                    ],
+                    "questions": normalized_questions,
                 }
     if not normalized_data:
         normalized_data = {
             "General Election": {
                 "description": "Select up to 10 options.",
-                "max_selections": 10,
-                "options": [],
+                "questions": [
+                    {
+                        "prompt": "Question 1",
+                        "max_selections": 10,
+                        "options": [],
+                    }
+                ],
             }
         }
     if normalized_data != data:
@@ -100,6 +143,33 @@ def normalize_student_id(value):
 
 def parse_options(text):
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+def parse_questions_json(text):
+    try:
+        parsed = json.loads(text or "[]")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, list):
+        return None
+    normalized_questions = []
+    for index, question in enumerate(parsed, start=1):
+        if not isinstance(question, dict):
+            continue
+        prompt = (question.get("prompt") or f"Question {index}").strip()
+        max_selections = validate_max_selections(question.get("max_selections"), default=1)
+        options = [
+            str(option).strip()
+            for option in question.get("options", [])
+            if str(option).strip()
+        ]
+        normalized_questions.append(
+            {
+                "prompt": prompt,
+                "max_selections": max_selections,
+                "options": options,
+            }
+        )
+    return normalized_questions
 
 def save_candidates(data):
     with open("candidates.json", "w") as f:
@@ -259,19 +329,25 @@ def vote():
     if not voter_record or voter_record.has_voted:
         return render_template("message.html", title="Already Voted", message="Your vote has already been recorded.")
     ballots = load_candidates()
-    ballot = ballots.get(year, {"options": [], "max_selections": 10, "description": ""})
-    ballot_options = ballot.get("options", [])
-    max_selections = ballot.get("max_selections", 10)
+    ballot = ballots.get(year, {"questions": [], "description": ""})
+    questions = ballot.get("questions", [])
     if request.method == "POST":
-        selected_candidates = request.form.getlist("candidates")
-        write_in = request.form.get("write_in_candidate", "").strip()
-        if write_in:
-            selected_candidates.append(write_in)
-        if len(selected_candidates) > max_selections:
-            flash(f"You can only select up to {max_selections} options (including write-ins).", "warning")
-            return redirect(url_for("vote"))
+        selected_candidates = []
+        for index, question in enumerate(questions):
+            question_choices = request.form.getlist(f"question_{index}_candidates")
+            write_in = request.form.get(f"question_{index}_write_in", "").strip()
+            if write_in:
+                question_choices.append(write_in)
+            question_max = question.get("max_selections", 1)
+            if len(question_choices) > question_max:
+                flash(
+                    f"'{question.get('prompt', f'Question {index + 1}')}' allows up to {question_max} selections.",
+                    "warning",
+                )
+                return redirect(url_for("vote"))
+            selected_candidates.extend(question_choices)
         if not selected_candidates:
-            flash("You must select at least one option to vote.", "warning")
+            flash("You must answer at least one question option to vote.", "warning")
             return redirect(url_for("vote"))
         for candidate_name in selected_candidates:
             new_vote = Vote(candidate=candidate_name)
@@ -286,10 +362,9 @@ def vote():
         return render_template("success.html")
     return render_template(
         "vote.html",
-        candidates=ballot_options,
+        questions=questions,
         ballot_name=year,
         ballot_description=ballot.get("description") or "",
-        max_selections=max_selections,
     )
 
 # --- Admin Routes ---
@@ -337,8 +412,13 @@ def add_election():
         return redirect(url_for("admin_dashboard"))
     candidates[election_name] = {
         "description": "",
-        "max_selections": 10,
-        "options": [],
+        "questions": [
+            {
+                "prompt": "Question 1",
+                "max_selections": 10,
+                "options": [],
+            }
+        ],
     }
     save_candidates(candidates)
     flash(f"Created election/ballot '{election_name}'.", "success")
@@ -399,8 +479,15 @@ def add_candidate():
         return redirect(url_for("admin_dashboard"))
     candidates = load_candidates()
     if year not in candidates:
-        candidates[year] = {"description": "", "max_selections": 10, "options": []}
-    options = candidates[year].setdefault("options", [])
+        candidates[year] = {
+            "description": "",
+            "questions": [{"prompt": "Question 1", "max_selections": 10, "options": []}],
+        }
+    questions = candidates[year].setdefault("questions", [])
+    if not questions:
+        questions = [{"prompt": "Question 1", "max_selections": 10, "options": []}]
+        candidates[year]["questions"] = questions
+    options = questions[0].setdefault("options", [])
     if name not in options:
         options.append(name)
         save_candidates(candidates)
@@ -418,7 +505,11 @@ def delete_candidate():
     if year not in candidates:
         flash(f"Election/ballot '{year}' was not found.", "danger")
         return redirect(url_for("admin_dashboard"))
-    options = candidates[year].setdefault("options", [])
+    questions = candidates[year].setdefault("questions", [])
+    if not questions:
+        flash(f"'{year}' has no configured questions.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    options = questions[0].setdefault("options", [])
     if name in options:
         options.remove(name)
         save_candidates(candidates)
@@ -447,17 +538,21 @@ def manual_vote():
         return redirect(url_for("admin_dashboard"))
 
     # Get checked candidates from the form
-    selected_candidates = request.form.getlist("candidates")
-    # Get the write-in value from the form
-    write_in = request.form.get("write_in_name", "").strip()
-    if write_in:
-        selected_candidates.append(write_in)
-
     ballot = candidates[year]
-    max_selections = ballot.get("max_selections", 10)
-    if len(selected_candidates) > max_selections:
-        flash(f"You can only select up to {max_selections} options (including write-ins).", "warning")
-        return redirect(url_for("admin_dashboard"))
+    selected_candidates = []
+    for index, question in enumerate(ballot.get("questions", [])):
+        question_choices = request.form.getlist(f"question_{index}_candidates")
+        write_in = request.form.get(f"question_{index}_write_in", "").strip()
+        if write_in:
+            question_choices.append(write_in)
+        question_max = question.get("max_selections", 1)
+        if len(question_choices) > question_max:
+            flash(
+                f"'{question.get('prompt', f'Question {index + 1}')}' allows up to {question_max} selections.",
+                "warning",
+            )
+            return redirect(url_for("admin_dashboard"))
+        selected_candidates.extend(question_choices)
     if not selected_candidates:
         flash("You must select at least one option to vote.", "warning")
         return redirect(url_for("admin_dashboard"))
@@ -539,16 +634,20 @@ def reset_voter_records():
 def update_ballot():
     ballot_name = request.form.get("ballot_name", "").strip()
     description = (request.form.get("description") or "").strip()
-    max_selections = validate_max_selections(request.form.get("max_selections"), default=10)
-    options_text = request.form.get("options_text", "")
-    options = parse_options(options_text)
+    questions_json = request.form.get("questions_json", "")
+    questions = parse_questions_json(questions_json)
     candidates = load_candidates()
     if ballot_name not in candidates:
         flash("Selected ballot was not found.", "danger")
         return redirect(url_for("admin_dashboard"))
+    if questions is None:
+        flash("Questions must be valid JSON.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    if not questions:
+        flash("At least one question is required for a ballot.", "danger")
+        return redirect(url_for("admin_dashboard"))
     candidates[ballot_name]["description"] = description
-    candidates[ballot_name]["max_selections"] = max_selections
-    candidates[ballot_name]["options"] = options
+    candidates[ballot_name]["questions"] = questions
     save_candidates(candidates)
     flash(f"Updated ballot builder settings for '{ballot_name}'.", "success")
     return redirect(url_for("admin_dashboard"))
