@@ -1,20 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Select Year - {{ super() }}{% endblock %}
+{% block title %}Select Ballot - {{ super() }}{% endblock %}
 
 {% block content %}
 <div class="card content-card">
     <div class="card-body">
-        <h1 class="card-title text-center mb-4">Student Government Election</h1>
-        <p class="text-center text-muted">Please select your current class year to begin.</p>
+        <h1 class="card-title text-center mb-4">Student Voting Portal</h1>
+        <p class="text-center text-muted">Please choose what ballot you are voting on.</p>
         <form method="post">
             <div class="mb-3">
-                <label for="year" class="form-label">Class Year</label>
+                <label for="year" class="form-label">Election / Ballot</label>
                 <select class="form-select" id="year" name="year" required>
                     <option selected disabled value="">Choose...</option>
-                    <option value="Freshman">Freshman</option>
-                    <option value="Sophomore">Sophomore</option>
-                    <option value="Junior">Junior</option>
-                    <option value="Senior">Senior</option>
+                    {% for election in elections %}
+                    <option value="{{ election }}">{{ election }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="d-grid">
