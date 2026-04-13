@@ -39,7 +39,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]+[a-z][a-z]+@student\.csuniv\.edu$")
-STUDENT_ID_PATTERN = re.compile(r"^\d{6}$")
+STUDENT_ID_PATTERN = re.compile(r"^\d{7,10}$")
 
 # --- Helper Functions ---
 def load_candidates():
@@ -366,11 +366,7 @@ def manual_vote():
     year = request.form.get("year")
     
     if not year:
-        flash("Election/ballot is required.", "danger")
-        return redirect(url_for("admin_dashboard"))
-    candidates = load_candidates()
-    if year not in candidates:
-        flash("Please choose a valid election/ballot.", "danger")
+        flash("Class Year is required.", "danger")
         return redirect(url_for("admin_dashboard"))
     if not email and not student_id_number:
         flash("Either student email or student ID number is required.", "danger")
