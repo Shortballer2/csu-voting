@@ -95,6 +95,9 @@ def normalize_student_email(value):
         email_value = f"{email_value}{STUDENT_EMAIL_DOMAIN}"
     return email_value
 
+def normalize_student_id(value):
+    return re.sub(r"\D", "", (value or "").strip())
+
 def parse_options(text):
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
 
@@ -177,7 +180,7 @@ def verify_email():
     if request.method == "POST":
         verification_method = request.form.get("verification_method", "email")
         if verification_method == "student_id":
-            student_id_number = request.form.get("student_id_number", "").strip()
+            student_id_number = normalize_student_id(request.form.get("student_id_number"))
             if not STUDENT_ID_PATTERN.match(student_id_number):
                 flash("Enter a valid student ID number (6 digits).", "danger")
                 return redirect(url_for("verify_email"))
@@ -429,7 +432,7 @@ def delete_candidate():
 @admin_login_required
 def manual_vote():
     email = normalize_student_email(request.form.get("email"))
-    student_id_number = (request.form.get("student_id_number") or "").strip()
+    student_id_number = normalize_student_id(request.form.get("student_id_number"))
     year = request.form.get("year")
     
     if not year:
