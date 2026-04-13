@@ -16,7 +16,10 @@
             </div>
             <div class="mb-3">
                 <label for="email" class="form-label">Student Email Address</label>
-                <input type="email" class="form-control" id="email" name="email" placeholder="firstnamemiddleinitiallastname@student.csuniv.edu" pattern="[A-Za-z]{5,}@student\.csuniv\.edu">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="email" name="email" placeholder="firstnamemiddleinitiallastname" pattern="[A-Za-z]+[A-Za-z][A-Za-z]+">
+                    <span class="input-group-text">@student.csuniv.edu</span>
+                </div>
             </div>
             <div class="mb-3 d-none" id="student-id-group">
                 <label for="student_id_number" class="form-label">Student ID Number</label>

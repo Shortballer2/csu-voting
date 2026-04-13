@@ -39,24 +39,77 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]+[a-z][a-z]+@student\.csuniv\.edu$")
-STUDENT_ID_PATTERN = re.compile(r"^\d{7,10}$")
+STUDENT_ID_PATTERN = re.compile(r"^\d{6}$")
+STUDENT_EMAIL_DOMAIN = "@student.csuniv.edu"
 
 # --- Helper Functions ---
 def load_candidates():
     if not os.path.exists("candidates.json"):
-        default_candidates = {"General Election": []}
-        save_candidates(default_candidates)
-        return default_candidates
+        default_ballots = {
+            "General Election": {
+                "description": "Select up to 10 options.",
+                "max_selections": 10,
+                "options": [],
+            }
+        }
+        save_candidates(default_ballots)
+        return default_ballots
     with open("candidates.json") as f:
         data = json.load(f)
-    if not isinstance(data, dict) or not data:
-        data = {"General Election": []}
-        save_candidates(data)
-    return data
+    normalized_data = {}
+    if isinstance(data, dict):
+        for ballot_name, ballot_data in data.items():
+            if isinstance(ballot_data, list):
+                normalized_data[ballot_name] = {
+                    "description": "",
+                    "max_selections": 10,
+                    "options": ballot_data,
+                }
+            elif isinstance(ballot_data, dict):
+                normalized_data[ballot_name] = {
+                    "description": (ballot_data.get("description") or "").strip(),
+                    "max_selections": max(1, int(ballot_data.get("max_selections", 10))),
+                    "options": [
+                        str(option).strip()
+                        for option in ballot_data.get("options", [])
+                        if str(option).strip()
+                    ],
+                }
+    if not normalized_data:
+        normalized_data = {
+            "General Election": {
+                "description": "Select up to 10 options.",
+                "max_selections": 10,
+                "options": [],
+            }
+        }
+    if normalized_data != data:
+        save_candidates(normalized_data)
+    return normalized_data
+
+def normalize_student_email(value):
+    email_value = (value or "").strip().lower()
+    if not email_value:
+        return ""
+    if "@" not in email_value:
+        email_value = f"{email_value}{STUDENT_EMAIL_DOMAIN}"
+    return email_value
+
+def parse_options(text):
+    return [line.strip() for line in (text or "").splitlines() if line.strip()]
 
 def save_candidates(data):
     with open("candidates.json", "w") as f:
         json.dump(data, f, indent=2)
+
+def validate_max_selections(value, default=10):
+    try:
+        parsed_value = int(value)
+        if parsed_value < 1:
+            return default
+        return parsed_value
+    except (TypeError, ValueError):
+        return default
 
 def send_otp_email(to_email, otp):
     msg = MIMEText(f"Your CSU Voting OTP code is: {otp}")
@@ -147,7 +200,7 @@ def verify_email():
             session.pop("otp", None)
             session.pop("email", None)
             return redirect(url_for("vote"))
-        email = request.form.get("email", "").strip().lower()
+        email = normalize_student_email(request.form.get("email"))
         if not STUDENT_EMAIL_PATTERN.match(email):
             flash(
                 "Use your CSU student email in this format: firstnamemiddleinitiallastname@student.csuniv.edu.",
@@ -202,18 +255,20 @@ def vote():
     voter_record = VoterRecord.query.filter_by(id=voter_record_id).first()
     if not voter_record or voter_record.has_voted:
         return render_template("message.html", title="Already Voted", message="Your vote has already been recorded.")
-    candidates = load_candidates()
-    year_candidates = candidates.get(year, [])
+    ballots = load_candidates()
+    ballot = ballots.get(year, {"options": [], "max_selections": 10, "description": ""})
+    ballot_options = ballot.get("options", [])
+    max_selections = ballot.get("max_selections", 10)
     if request.method == "POST":
         selected_candidates = request.form.getlist("candidates")
         write_in = request.form.get("write_in_candidate", "").strip()
         if write_in:
             selected_candidates.append(write_in)
-        if len(selected_candidates) > 10:
-            flash("You can only select up to 10 candidates (including write-ins).", "warning")
+        if len(selected_candidates) > max_selections:
+            flash(f"You can only select up to {max_selections} options (including write-ins).", "warning")
             return redirect(url_for("vote"))
         if not selected_candidates:
-            flash("You must select at least one candidate to vote.", "warning")
+            flash("You must select at least one option to vote.", "warning")
             return redirect(url_for("vote"))
         for candidate_name in selected_candidates:
             new_vote = Vote(candidate=candidate_name)
@@ -226,7 +281,13 @@ def vote():
         session.pop("otp", None)
         session.pop("voter_record_id", None)
         return render_template("success.html")
-    return render_template("vote.html", candidates=year_candidates)
+    return render_template(
+        "vote.html",
+        candidates=ballot_options,
+        ballot_name=year,
+        ballot_description=ballot.get("description") or "",
+        max_selections=max_selections,
+    )
 
 # --- Admin Routes ---
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -271,7 +332,11 @@ def add_election():
     if election_name in candidates:
         flash(f"'{election_name}' already exists.", "warning")
         return redirect(url_for("admin_dashboard"))
-    candidates[election_name] = []
+    candidates[election_name] = {
+        "description": "",
+        "max_selections": 10,
+        "options": [],
+    }
     save_candidates(candidates)
     flash(f"Created election/ballot '{election_name}'.", "success")
     return redirect(url_for("admin_dashboard"))
@@ -331,9 +396,10 @@ def add_candidate():
         return redirect(url_for("admin_dashboard"))
     candidates = load_candidates()
     if year not in candidates:
-        candidates[year] = []
-    if name not in candidates[year]:
-        candidates[year].append(name)
+        candidates[year] = {"description": "", "max_selections": 10, "options": []}
+    options = candidates[year].setdefault("options", [])
+    if name not in options:
+        options.append(name)
         save_candidates(candidates)
         flash(f"Added '{name}' to {year}.", "success")
     else:
@@ -349,8 +415,9 @@ def delete_candidate():
     if year not in candidates:
         flash(f"Election/ballot '{year}' was not found.", "danger")
         return redirect(url_for("admin_dashboard"))
-    if name in candidates[year]:
-        candidates[year].remove(name)
+    options = candidates[year].setdefault("options", [])
+    if name in options:
+        options.remove(name)
         save_candidates(candidates)
         flash(f"Removed '{name}' from {year}.", "success")
     else:
@@ -361,12 +428,16 @@ def delete_candidate():
 @app.route("/admin/manual_vote", methods=["POST"])
 @admin_login_required
 def manual_vote():
-    email = (request.form.get("email") or "").strip().lower()
+    email = normalize_student_email(request.form.get("email"))
     student_id_number = (request.form.get("student_id_number") or "").strip()
     year = request.form.get("year")
     
     if not year:
-        flash("Class Year is required.", "danger")
+        flash("Election/ballot is required.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    candidates = load_candidates()
+    if year not in candidates:
+        flash("Please choose a valid election/ballot.", "danger")
         return redirect(url_for("admin_dashboard"))
     if not email and not student_id_number:
         flash("Either student email or student ID number is required.", "danger")
@@ -379,12 +450,13 @@ def manual_vote():
     if write_in:
         selected_candidates.append(write_in)
 
-    # Validate number of votes
-    if len(selected_candidates) > 10:
-        flash("You can only select up to 10 candidates (including write-ins).", "warning")
+    ballot = candidates[year]
+    max_selections = ballot.get("max_selections", 10)
+    if len(selected_candidates) > max_selections:
+        flash(f"You can only select up to {max_selections} options (including write-ins).", "warning")
         return redirect(url_for("admin_dashboard"))
     if not selected_candidates:
-        flash("You must select at least one candidate to vote.", "warning")
+        flash("You must select at least one option to vote.", "warning")
         return redirect(url_for("admin_dashboard"))
 
     identifier = student_id_number or email
@@ -457,6 +529,25 @@ def reset_voter_records():
         flash(f"Reset {updated_count} voter record(s) for '{year}'.", "success")
     else:
         flash(f"Reset {updated_count} voter record(s) across all years.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+@app.route("/admin/ballot/update", methods=["POST"])
+@admin_login_required
+def update_ballot():
+    ballot_name = request.form.get("ballot_name", "").strip()
+    description = (request.form.get("description") or "").strip()
+    max_selections = validate_max_selections(request.form.get("max_selections"), default=10)
+    options_text = request.form.get("options_text", "")
+    options = parse_options(options_text)
+    candidates = load_candidates()
+    if ballot_name not in candidates:
+        flash("Selected ballot was not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    candidates[ballot_name]["description"] = description
+    candidates[ballot_name]["max_selections"] = max_selections
+    candidates[ballot_name]["options"] = options
+    save_candidates(candidates)
+    flash(f"Updated ballot builder settings for '{ballot_name}'.", "success")
     return redirect(url_for("admin_dashboard"))
 
 @app.route("/results")

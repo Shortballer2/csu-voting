@@ -59,7 +59,7 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        Add Voting Option
+        Quick Add Voting Option
     </div>
     <div class="card-body">
         <form class="row g-3 align-items-end" method="post" action="{{ url_for('add_candidate') }}">
@@ -72,7 +72,7 @@
                 </select>
             </div>
             <div class="col-md-5">
-                <label for="name" class="form-label">Option / Candidate Name</label>
+                <label for="name" class="form-label">Option Label</label>
                 <input type="text" name="name" id="name" class="form-control" required>
             </div>
             <div class="col-md-2 d-grid">
@@ -84,14 +84,31 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        Manage Ballot Options
+        Ballot Builder (Form-Style Editor)
     </div>
     <div class="card-body">
-        {% for year, names in candidates.items() %}
+        {% for year, ballot in candidates.items() %}
             <h5 class="mt-3">{{ year }}</h5>
-            {% if names %}
+            <form method="post" action="{{ url_for('update_ballot') }}" class="mb-3">
+                <input type="hidden" name="ballot_name" value="{{ year }}">
+                <div class="mb-2">
+                    <label class="form-label">Question / Prompt</label>
+                    <input type="text" name="description" class="form-control" value="{{ ballot.description or '' }}" placeholder="e.g., Select up to 3 executive officers.">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Max Selections</label>
+                    <input type="number" min="1" name="max_selections" class="form-control" value="{{ ballot.max_selections or 10 }}" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Options (one per line)</label>
+                    <textarea name="options_text" class="form-control" rows="4" placeholder="Option A&#10;Option B&#10;Option C">{% for name in ballot.options %}{{ name }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+                </div>
+                <button type="submit" class="btn btn-outline-primary btn-sm">Save Ballot Builder Settings</button>
+            </form>
+            {% if ballot.options %}
             <ul class="list-group">
-                {% for name in names %}
+                {% for name in ballot.options %}
                 <li class="list-group-item d-flex justify-content-between align-items-center">
                     {{ name }}
                     <form method="post" action="{{ url_for('delete_candidate') }}">
@@ -105,6 +122,7 @@
             {% else %}
             <p class="text-muted">No options listed for this ballot.</p>
             {% endif %}
+            <hr>
         {% endfor %}
     </div>
 </div>
@@ -118,7 +136,10 @@
             <div class="row g-3">
                 <div class="col-md-6">
                     <label for="email" class="form-label">Student Email</label>
-                    <input type="email" name="email" id="email" class="form-control" placeholder="student_email@student.csuniv.edu">
+                    <div class="input-group">
+                        <input type="text" name="email" id="email" class="form-control" placeholder="firstnamemiddleinitiallastname" pattern="[A-Za-z]+[A-Za-z][A-Za-z]+">
+                        <span class="input-group-text">@student.csuniv.edu</span>
+                    </div>
                 </div>
                 <div class="col-md-6">
                     <label for="student_id_number" class="form-label">Student ID Number (optional alternative)</label>
@@ -134,8 +155,8 @@
                 </div>
             </div>
             <hr class="my-4">
-            <h5>Select Options (up to 10)</h5>
-            <p class="text-muted mb-2">Selected: <span id="selected-count">0</span>/10</p>
+            <h5 id="selection-title">Select Options</h5>
+            <p class="text-muted mb-2">Selected: <span id="selected-count">0</span>/<span id="max-count">10</span></p>
             <div id="candidate_checkbox_wrapper" class="mb-3"></div>
             <div class="mb-3">
                 <label for="write_in_name" class="form-label fw-bold">Write-in Candidate (Optional)</label>
@@ -211,12 +232,13 @@
     const yearSelect = document.getElementById('manual_vote_year');
     const checkboxWrapper = document.getElementById('candidate_checkbox_wrapper');
 
-    const MAX_SELECTIONS = 10;
-
     function updateSelectionState() {
+        const selectedYear = yearSelect.value;
+        const maxSelections = (candidates[selectedYear] && candidates[selectedYear].max_selections) ? candidates[selectedYear].max_selections : 10;
         const selected = checkboxWrapper.querySelectorAll('input[type="checkbox"]:checked').length;
+        document.getElementById('max-count').textContent = maxSelections;
         document.getElementById('selected-count').textContent = selected;
-        const disableUnchecked = selected >= MAX_SELECTIONS;
+        const disableUnchecked = selected >= maxSelections;
         checkboxWrapper.querySelectorAll('input[type="checkbox"]').forEach((input) => {
             if (!input.checked) {
                 input.disabled = disableUnchecked;
@@ -226,7 +248,9 @@
 
     function updateCandidateCheckboxes() {
         const selectedYear = yearSelect.value;
-        const yearCandidates = candidates[selectedYear] || [];
+        const yearCandidates = (candidates[selectedYear] && candidates[selectedYear].options) ? candidates[selectedYear].options : [];
+        const maxSelections = (candidates[selectedYear] && candidates[selectedYear].max_selections) ? candidates[selectedYear].max_selections : 10;
+        document.getElementById('selection-title').textContent = `Select Options (up to ${maxSelections})`;
         
         checkboxWrapper.innerHTML = ''; // Clear previous checkboxes
         
