@@ -8,7 +8,13 @@ class Student(db.Model):
     year = db.Column(db.String(20), nullable=False)
     has_voted = db.Column(db.Boolean, default=False)
 
+class VoterRecord(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    method = db.Column(db.String(20), nullable=False)
+    identifier = db.Column(db.String(120), nullable=False, unique=True)
+    year = db.Column(db.String(20), nullable=False)
+    has_voted = db.Column(db.Boolean, default=False)
+
 class Vote(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey("student.id"), nullable=False)
     candidate = db.Column(db.String(120), nullable=False)

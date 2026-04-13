@@ -12,21 +12,67 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        Add New Candidate
+        Ballot Configuration
+    </div>
+    <div class="card-body">
+        <form class="row g-3 align-items-end mb-3" method="post" action="{{ url_for('add_election') }}">
+            <div class="col-md-9">
+                <label for="election_name" class="form-label">Create Election / Ballot</label>
+                <input type="text" name="election_name" id="election_name" class="form-control" placeholder="e.g., Senator Election 2026" required>
+            </div>
+            <div class="col-md-3 d-grid">
+                <button type="submit" class="btn btn-success">Create</button>
+            </div>
+        </form>
+        <form class="row g-3 align-items-end mb-3" method="post" action="{{ url_for('rename_election') }}">
+            <div class="col-md-4">
+                <label for="current_name" class="form-label">Rename Ballot</label>
+                <select name="current_name" id="current_name" class="form-select" required>
+                    {% for election in election_names %}
+                    <option value="{{ election }}">{{ election }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label for="new_name" class="form-label">New Name</label>
+                <input type="text" name="new_name" id="new_name" class="form-control" required>
+            </div>
+            <div class="col-md-3 d-grid">
+                <button type="submit" class="btn btn-outline-primary">Rename</button>
+            </div>
+        </form>
+        <form class="row g-3 align-items-end" method="post" action="{{ url_for('delete_election') }}">
+            <div class="col-md-9">
+                <label for="delete_election_name" class="form-label">Delete Election / Ballot</label>
+                <select name="election_name" id="delete_election_name" class="form-select" required>
+                    {% for election in election_names %}
+                    <option value="{{ election }}">{{ election }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-grid">
+                <button type="submit" class="btn btn-danger">Delete Ballot</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Quick Add Voting Option
     </div>
     <div class="card-body">
         <form class="row g-3 align-items-end" method="post" action="{{ url_for('add_candidate') }}">
             <div class="col-md-5">
-                <label for="year" class="form-label">Class Year</label>
+                <label for="year" class="form-label">Election / Ballot</label>
                 <select name="year" id="year" class="form-select" required>
-                    <option value="Freshman">Freshman</option>
-                    <option value="Sophomore">Sophomore</option>
-                    <option value="Junior">Junior</option>
-                    <option value="Senior">Senior</option>
+                    {% for election in election_names %}
+                    <option value="{{ election }}">{{ election }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-5">
-                <label for="name" class="form-label">Candidate Name</label>
+                <label for="name" class="form-label">Option Label</label>
                 <input type="text" name="name" id="name" class="form-control" required>
             </div>
             <div class="col-md-2 d-grid">
@@ -38,16 +84,45 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        Manage Candidates
+        Ballot Builder (Form-Style Editor)
     </div>
     <div class="card-body">
-        {% for year, names in candidates.items() %}
+        {% for year, ballot in candidates.items() %}
             <h5 class="mt-3">{{ year }}</h5>
-            {% if names %}
+            <form method="post" action="{{ url_for('update_ballot') }}" class="mb-3">
+                <input type="hidden" name="ballot_name" value="{{ year }}">
+                <div class="mb-2">
+                    <label class="form-label">Question / Prompt</label>
+                    <input type="text" name="description" class="form-control" value="{{ ballot.description or '' }}" placeholder="e.g., Select up to 3 executive officers.">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Questions Builder (JSON)</label>
+                    <textarea name="questions_json" class="form-control font-monospace" rows="8" placeholder='[{"prompt":"Secretary/Treasurer","max_selections":1,"options":["Name 1","Name 2"]}]'>{{ ballot.questions | tojson(indent=2) }}</textarea>
+                    <div class="form-text">Use an array of question objects with: prompt, max_selections, options.</div>
+                </div>
+                <button type="submit" class="btn btn-outline-primary btn-sm">Save Ballot Builder Settings</button>
+            </form>
+            {% if ballot.questions %}
             <ul class="list-group">
-                {% for name in names %}
+                {% for question in ballot.questions %}
+                <li class="list-group-item">
+                    <div class="fw-bold">{{ loop.index }}. {{ question.prompt }} <span class="text-muted">(max: {{ question.max_selections }})</span></div>
+                    {% if question.options %}
+                    <div class="small mt-1">{{ question.options | join(", ") }}</div>
+                    {% else %}
+                    <div class="small text-muted mt-1">No options yet.</div>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted">No questions listed for this ballot.</p>
+            {% endif %}
+            {% if ballot.questions and ballot.questions[0].options %}
+            <ul class="list-group mt-2">
+                {% for name in ballot.questions[0].options %}
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                    {{ name }}
+                    Question 1 option: {{ name }}
                     <form method="post" action="{{ url_for('delete_candidate') }}">
                         <input type="hidden" name="year" value="{{ year }}">
                         <input type="hidden" name="name" value="{{ name }}">
@@ -56,9 +131,8 @@
                 </li>
                 {% endfor %}
             </ul>
-            {% else %}
-            <p class="text-muted">No candidates listed for this year.</p>
             {% endif %}
+            <hr>
         {% endfor %}
     </div>
 </div>
@@ -72,30 +146,89 @@
             <div class="row g-3">
                 <div class="col-md-6">
                     <label for="email" class="form-label">Student Email</label>
-                    <input type="email" name="email" id="email" class="form-control" placeholder="student_email@student.csuniv.edu" required>
+                    <div class="input-group">
+                        <input type="text" name="email" id="email" class="form-control" placeholder="firstnamemiddleinitiallastname" pattern="[A-Za-z]+[A-Za-z][A-Za-z]+">
+                        <span class="input-group-text">@student.csuniv.edu</span>
+                    </div>
                 </div>
                 <div class="col-md-6">
-                    <label for="manual_vote_year" class="form-label">Class Year</label>
+                    <label for="student_id_number" class="form-label">Student ID Number (optional alternative)</label>
+                    <input type="text" name="student_id_number" id="student_id_number" class="form-control" placeholder="6 digits" pattern="\d{6}" inputmode="numeric" maxlength="6" autocomplete="off">
+                </div>
+                <div class="col-md-6">
+                    <label for="manual_vote_year" class="form-label">Election / Ballot</label>
                     <select name="year" id="manual_vote_year" class="form-select" required>
-                        <option value="Freshman">Freshman</option>
-                        <option value="Sophomore">Sophomore</option>
-                        <option value="Junior">Junior</option>
-                        <option value="Senior">Senior</option>
+                        {% for election in election_names %}
+                        <option value="{{ election }}">{{ election }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>
             <hr class="my-4">
-            <h5>Select Candidates (up to 10)</h5>
-            <p class="text-muted mb-2">Selected: <span id="selected-count">0</span>/10</p>
+            <h5 id="selection-title">Select Options</h5>
             <div id="candidate_checkbox_wrapper" class="mb-3"></div>
-            <div class="mb-3">
-                <label for="write_in_name" class="form-label fw-bold">Write-in Candidate (Optional)</label>
-                <input type="text" class="form-control" name="write_in_name" id="write_in_name" placeholder="Enter a name">
-            </div>
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary">Submit Vote</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Election Reset Tools
+    </div>
+    <div class="card-body">
+        <p class="text-muted">Clear voting locks at the start of a new election cycle.</p>
+        <form method="post" action="{{ url_for('reset_voter_records') }}" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label for="reset_year" class="form-label">Reset by Ballot (optional)</label>
+                <select name="year" id="reset_year" class="form-select">
+                    <option value="">All ballots</option>
+                    {% for election in election_names %}
+                    <option value="{{ election }}">{{ election }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 d-grid">
+                <button type="submit" class="btn btn-warning">Clear has_voted Flags</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Edit Individual Voter Record
+    </div>
+    <div class="card-body">
+        {% if voter_records %}
+        <form method="post" action="{{ url_for('update_voter_record') }}" class="row g-3 align-items-end">
+            <div class="col-md-7">
+                <label for="record_id" class="form-label">Voter Record</label>
+                <select name="record_id" id="record_id" class="form-select" required>
+                    {% for record in voter_records %}
+                    <option value="{{ record.id }}">
+                        #{{ record.id }} - {{ record.identifier }} ({{ record.method }}, {{ record.year }}, voted: {{ "yes" if record.has_voted else "no" }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="has_voted" name="has_voted">
+                    <label class="form-check-label" for="has_voted">
+                        Mark as voted
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-outline-primary">Save</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-muted mb-0">No voter records yet.</p>
+        {% endif %}
     </div>
 </div>
 
@@ -104,49 +237,77 @@
     const yearSelect = document.getElementById('manual_vote_year');
     const checkboxWrapper = document.getElementById('candidate_checkbox_wrapper');
 
-    const MAX_SELECTIONS = 10;
-
     function updateSelectionState() {
-        const selected = checkboxWrapper.querySelectorAll('input[type="checkbox"]:checked').length;
-        document.getElementById('selected-count').textContent = selected;
-        const disableUnchecked = selected >= MAX_SELECTIONS;
-        checkboxWrapper.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-            if (!input.checked) {
-                input.disabled = disableUnchecked;
-            }
+        const questionCards = checkboxWrapper.querySelectorAll('[data-question-index]');
+        questionCards.forEach((card) => {
+            const maxSelections = Number(card.dataset.maxSelections || 1);
+            const checkedCount = card.querySelectorAll('input[type="checkbox"]:checked').length;
+            card.querySelector('.selected-count').textContent = checkedCount;
+            card.querySelector('.max-count').textContent = maxSelections;
+            const disableUnchecked = checkedCount >= maxSelections;
+            card.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                if (!input.checked) {
+                    input.disabled = disableUnchecked;
+                }
+            });
         });
     }
 
     function updateCandidateCheckboxes() {
         const selectedYear = yearSelect.value;
-        const yearCandidates = candidates[selectedYear] || [];
+        const questions = (candidates[selectedYear] && candidates[selectedYear].questions) ? candidates[selectedYear].questions : [];
+        document.getElementById('selection-title').textContent = `Select Options`;
         
         checkboxWrapper.innerHTML = ''; // Clear previous checkboxes
         
-        if (yearCandidates.length > 0) {
-            yearCandidates.forEach((candidate, index) => {
-                const div = document.createElement('div');
-                div.className = 'form-check fs-5 my-2';
-                
-                const input = document.createElement('input');
-                input.className = 'form-check-input';
-                input.type = 'checkbox';
-                input.name = 'candidates';
-                input.value = candidate;
-                input.id = `manual-candidate-${index}`;
-                input.addEventListener('change', updateSelectionState);
-                
-                const label = document.createElement('label');
-                label.className = 'form-check-label';
-                label.htmlFor = `manual-candidate-${index}`;
-                label.textContent = candidate;
-                
-                div.appendChild(input);
-                div.appendChild(label);
-                checkboxWrapper.appendChild(div);
+        if (questions.length > 0) {
+            questions.forEach((question, questionIndex) => {
+                const card = document.createElement('div');
+                card.className = 'border rounded p-3 mb-3';
+                card.dataset.questionIndex = String(questionIndex);
+                card.dataset.maxSelections = String(question.max_selections || 1);
+
+                const title = document.createElement('h6');
+                title.textContent = `${questionIndex + 1}. ${question.prompt}`;
+                card.appendChild(title);
+
+                const counts = document.createElement('p');
+                counts.className = 'text-muted mb-2';
+                counts.innerHTML = 'Selected: <span class="selected-count">0</span>/<span class="max-count"></span>';
+                card.appendChild(counts);
+
+                (question.options || []).forEach((candidate, optionIndex) => {
+                    const div = document.createElement('div');
+                    div.className = 'form-check my-2';
+
+                    const input = document.createElement('input');
+                    input.className = 'form-check-input';
+                    input.type = 'checkbox';
+                    input.name = `question_${questionIndex}_candidates`;
+                    input.value = candidate;
+                    input.id = `manual-question-${questionIndex}-option-${optionIndex}`;
+                    input.addEventListener('change', updateSelectionState);
+
+                    const label = document.createElement('label');
+                    label.className = 'form-check-label';
+                    label.htmlFor = input.id;
+                    label.textContent = candidate;
+
+                    div.appendChild(input);
+                    div.appendChild(label);
+                    card.appendChild(div);
+                });
+
+                const writeInWrap = document.createElement('div');
+                writeInWrap.className = 'mt-2';
+                writeInWrap.innerHTML = `<label class="form-label fw-bold" for="manual-question-${questionIndex}-writein">Write-in (Optional)</label>
+                    <input type="text" class="form-control" name="question_${questionIndex}_write_in" id="manual-question-${questionIndex}-writein" placeholder="Enter a name">`;
+                card.appendChild(writeInWrap);
+
+                checkboxWrapper.appendChild(card);
             });
         } else {
-            checkboxWrapper.innerHTML = '<p class="text-muted">No candidates for this year.</p>';
+            checkboxWrapper.innerHTML = '<p class="text-muted">No questions configured for this ballot.</p>';
         }
         updateSelectionState();
     }
