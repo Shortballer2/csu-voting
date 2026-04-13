@@ -5,11 +5,11 @@
 <div class="card content-card">
     <div class="card-body">
         <h1 class="card-title text-center mb-4">Email Verification</h1>
-        <p class="text-center text-muted">Enter your official university email address to receive a one-time passcode.</p>
+        <p class="text-center text-muted">Enter your official university email in the format firstnamemiddleinitiallastname@student.csuniv.edu.</p>
         <form method="post">
             <div class="mb-3">
                 <label for="email" class="form-label">Student Email Address</label>
-                <input type="email" class="form-control" id="email" name="email" placeholder="your_name@student.csuniv.edu" required>
+                <input type="email" class="form-control" id="email" name="email" placeholder="firstnamemiddleinitiallastname@student.csuniv.edu" pattern="[A-Za-z]{5,}@student\.csuniv\.edu" required>
             </div>
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary btn-lg">Send Code</button>
