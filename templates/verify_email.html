@@ -4,9 +4,18 @@
 {% block content %}
 <div class="card content-card">
     <div class="card-body">
-        <h1 class="card-title text-center mb-4">Email Verification</h1>
-        <p class="text-center text-muted">Verify with your official university email or your student ID number.</p>
+        <h1 class="card-title text-center mb-4">Voter Verification</h1>
+        <p class="text-center text-muted">Choose your ballot, then verify with your official university email or student ID number.</p>
         <form method="post">
+            <div class="mb-3">
+                <label for="year" class="form-label">Election / Ballot</label>
+                <select class="form-select" id="year" name="year" required>
+                    <option selected disabled value="">Choose...</option>
+                    {% for election in elections %}
+                    <option value="{{ election }}" {% if session.get("year") == election %}selected{% endif %}>{{ election }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div class="mb-3">
                 <label for="verification_method" class="form-label">Verification Method</label>
                 <select class="form-select" id="verification_method" name="verification_method">

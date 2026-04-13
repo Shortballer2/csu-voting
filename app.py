@@ -232,22 +232,18 @@ def public_login():
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
+    return redirect(url_for("verify_email"))
+
+@app.route("/verify_email", methods=["GET", "POST"])
+@login_required
+def verify_email():
     elections = load_candidates()
     if request.method == "POST":
         selected_election = request.form.get("year", "").strip()
         if selected_election not in elections:
             flash("Please choose a valid ballot.", "warning")
-            return redirect(url_for("index"))
+            return redirect(url_for("verify_email"))
         session["year"] = selected_election
-        return redirect(url_for("verify_email"))
-    return render_template("index.html", elections=list(elections.keys()))
-
-@app.route("/verify_email", methods=["GET", "POST"])
-@login_required
-def verify_email():
-    if "year" not in session:
-        return redirect(url_for("index"))
-    if request.method == "POST":
         verification_method = request.form.get("verification_method", "email")
         if verification_method == "student_id":
             student_id_number = normalize_student_id(request.form.get("student_id_number"))
@@ -304,7 +300,7 @@ def verify_email():
             flash("Error sending email. Please try again.", "danger")
             print("Email error:", e)
             return redirect(url_for("verify_email"))
-    return render_template("verify_email.html")
+    return render_template("verify_email.html", elections=list(elections.keys()))
 
 @app.route("/otp", methods=["GET", "POST"])
 @login_required
