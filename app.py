@@ -27,9 +27,22 @@ database_url = os.getenv("DATABASE_URL", "").strip()
 if database_url:
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 else:
-    default_db_path = Path(os.getenv("DB_PATH", "data/votes.db")).expanduser()
+    configured_db_path = os.getenv("DB_PATH", "").strip()
+    if configured_db_path:
+        default_db_path = Path(configured_db_path).expanduser()
+    elif os.getenv("RENDER", "").lower() == "true":
+        persistent_render_path = Path("/var/data/votes.db")
+        default_db_path = (
+            persistent_render_path
+            if persistent_render_path.parent.exists()
+            else Path("/tmp/votes.db")
+        )
+    else:
+        default_db_path = Path("data/votes.db")
     default_db_path.parent.mkdir(parents=True, exist_ok=True)
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{default_db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        f"sqlite:///{default_db_path.resolve()}"
+    )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Initialize database with the app
