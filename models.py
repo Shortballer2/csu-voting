@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import UniqueConstraint
 
 db = SQLAlchemy()
 
@@ -11,9 +12,12 @@ class Student(db.Model):
 class VoterRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     method = db.Column(db.String(20), nullable=False)
-    identifier = db.Column(db.String(120), nullable=False, unique=True)
+    identifier = db.Column(db.String(120), nullable=False)
     year = db.Column(db.String(20), nullable=False)
     has_voted = db.Column(db.Boolean, default=False)
+    __table_args__ = (
+        UniqueConstraint("method", "identifier", "year", name="uq_voter_record_scope"),
+    )
 
 class Vote(db.Model):
     id = db.Column(db.Integer, primary_key=True)

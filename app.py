@@ -327,20 +327,28 @@ def verify_email():
         if not STUDENT_ID_PATTERN.match(student_id_number):
             flash("Enter a valid student ID number (6 digits).", "danger")
             return redirect(url_for("verify_email"))
-        eligible_voter = EligibleVoter.query.filter_by(
-            year=selected_election,
-            email=email,
-            student_id=student_id_number,
-        ).first()
-        if not eligible_voter or normalize_name(eligible_voter.full_name) != normalized_full_name:
-            flash("Your details could not be verified against the eligible voter list.", "danger")
-            return redirect(url_for("verify_email"))
+        roster_exists = (
+            db.session.query(EligibleVoter.id)
+            .filter_by(year=selected_election)
+            .first()
+            is not None
+        )
+        if roster_exists:
+            eligible_voter = EligibleVoter.query.filter_by(
+                year=selected_election,
+                email=email,
+                student_id=student_id_number,
+            ).first()
+            if not eligible_voter or normalize_name(eligible_voter.full_name) != normalized_full_name:
+                flash("Your details could not be verified against the eligible voter list.", "danger")
+                return redirect(url_for("verify_email"))
 
         verification_method = request.form.get("verification_method", "email")
         if verification_method == "student_id":
             voter_record = VoterRecord.query.filter_by(
                 method="student_id",
                 identifier=student_id_number,
+                year=selected_election,
             ).first()
             if voter_record and voter_record.has_voted:
                 flash("This student ID number has already been used to vote.", "warning")
@@ -362,7 +370,11 @@ def verify_email():
             student = Student(email=email, year=session["year"])
             db.session.add(student)
             db.session.commit()
-        voter_record = VoterRecord.query.filter_by(method="email", identifier=email).first()
+        voter_record = VoterRecord.query.filter_by(
+            method="email",
+            identifier=email,
+            year=selected_election,
+        ).first()
         if voter_record and voter_record.has_voted:
             flash("This email address has already been used to vote.", "warning")
             return redirect(url_for("verify_email"))
@@ -703,7 +715,7 @@ def manual_vote():
             student = Student(email=email, year=year)
             db.session.add(student)
 
-    voter_record = VoterRecord.query.filter_by(method=method, identifier=identifier).first()
+    voter_record = VoterRecord.query.filter_by(method=method, identifier=identifier, year=year).first()
     if voter_record and voter_record.has_voted:
         flash(f"Voter '{identifier}' has already voted.", "warning")
         return redirect(url_for("admin_dashboard"))
