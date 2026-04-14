@@ -21,25 +21,49 @@ load_dotenv("csu-voting.env", override=True)
 
 app = Flask(__name__)
 
+# --- Persistent Storage Helpers ---
+def running_on_render():
+    render_markers = (
+        "RENDER",
+        "RENDER_EXTERNAL_URL",
+        "RENDER_SERVICE_ID",
+        "RENDER_INSTANCE_ID",
+    )
+    return any((os.getenv(marker) or "").strip() for marker in render_markers)
+
+
+def get_persistent_path(env_var_name, default_relative_path, render_default_filename):
+    configured_path = os.getenv(env_var_name, "").strip()
+    if configured_path:
+        target_path = Path(configured_path).expanduser()
+    elif running_on_render():
+        render_data_path = Path("/var/data")
+        if render_data_path.exists():
+            target_path = render_data_path / render_default_filename
+        else:
+            target_path = Path("/tmp") / render_default_filename
+    else:
+        target_path = Path(default_relative_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    return target_path
+
+
 # --- Configuration ---
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "devkey")
 database_url = os.getenv("DATABASE_URL", "").strip()
+ballots_path = get_persistent_path(
+    env_var_name="CANDIDATES_PATH",
+    default_relative_path="candidates.json",
+    render_default_filename="candidates.json",
+)
 if database_url:
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 else:
-    configured_db_path = os.getenv("DB_PATH", "").strip()
-    if configured_db_path:
-        default_db_path = Path(configured_db_path).expanduser()
-    elif os.getenv("RENDER", "").lower() == "true":
-        persistent_render_path = Path("/var/data/votes.db")
-        default_db_path = (
-            persistent_render_path
-            if persistent_render_path.parent.exists()
-            else Path("/tmp/votes.db")
-        )
-    else:
-        default_db_path = Path("data/votes.db")
-    default_db_path.parent.mkdir(parents=True, exist_ok=True)
+    default_db_path = get_persistent_path(
+        env_var_name="DB_PATH",
+        default_relative_path="data/votes.db",
+        render_default_filename="votes.db",
+    )
     app.config["SQLALCHEMY_DATABASE_URI"] = (
         f"sqlite:///{default_db_path.resolve()}"
     )
@@ -66,7 +90,7 @@ STUDENT_EMAIL_DOMAIN = "@student.csuniv.edu"
 
 # --- Helper Functions ---
 def load_candidates():
-    if not os.path.exists("candidates.json"):
+    if not ballots_path.exists():
         default_ballots = {
             "General Election": {
                 "description": "Select up to 10 options.",
@@ -81,7 +105,7 @@ def load_candidates():
         }
         save_candidates(default_ballots)
         return default_ballots
-    with open("candidates.json") as f:
+    with ballots_path.open() as f:
         data = json.load(f)
     normalized_data = {}
     if isinstance(data, dict):
@@ -259,7 +283,7 @@ def parse_questions_json(text):
     return normalized_questions
 
 def save_candidates(data):
-    with open("candidates.json", "w") as f:
+    with ballots_path.open("w") as f:
         json.dump(data, f, indent=2)
 
 def validate_max_selections(value, default=10):
