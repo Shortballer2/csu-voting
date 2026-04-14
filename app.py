@@ -351,8 +351,12 @@ def verify_email():
     elections = load_candidates()
     if request.method == "POST":
         selected_election = request.form.get("year", "").strip()
+        verification_method = request.form.get("verification_method", "email")
         if selected_election not in elections:
             flash("Please choose a valid ballot.", "warning")
+            return redirect(url_for("verify_email"))
+        if verification_method not in {"email", "student_id"}:
+            flash("Please choose a valid verification method.", "warning")
             return redirect(url_for("verify_email"))
         session["year"] = selected_election
         full_name = (request.form.get("full_name") or "").strip()
@@ -362,14 +366,14 @@ def verify_email():
         if len(normalized_full_name) < 3:
             flash("Enter your full name exactly as listed in the voter roster.", "danger")
             return redirect(url_for("verify_email"))
-        if not STUDENT_EMAIL_PATTERN.match(email):
+        if not STUDENT_ID_PATTERN.match(student_id_number):
+            flash("Enter a valid student ID number (6 digits).", "danger")
+            return redirect(url_for("verify_email"))
+        if verification_method == "email" and not STUDENT_EMAIL_PATTERN.match(email):
             flash(
                 "Use your CSU student email in this format: firstnamemiddleinitiallastname@student.csuniv.edu.",
                 "danger",
             )
-            return redirect(url_for("verify_email"))
-        if not STUDENT_ID_PATTERN.match(student_id_number):
-            flash("Enter a valid student ID number (6 digits).", "danger")
             return redirect(url_for("verify_email"))
         roster_exists = (
             db.session.query(EligibleVoter.id)
@@ -378,16 +382,16 @@ def verify_email():
             is not None
         )
         if roster_exists:
-            eligible_voter = EligibleVoter.query.filter_by(
-                year=selected_election,
-                email=email,
-                student_id=student_id_number,
-            ).first()
+            roster_filters = {
+                "year": selected_election,
+                "student_id": student_id_number,
+            }
+            if verification_method == "email":
+                roster_filters["email"] = email
+            eligible_voter = EligibleVoter.query.filter_by(**roster_filters).first()
             if not eligible_voter or normalize_name(eligible_voter.full_name) != normalized_full_name:
                 flash("Your details could not be verified against the eligible voter list.", "danger")
                 return redirect(url_for("verify_email"))
-
-        verification_method = request.form.get("verification_method", "email")
         if verification_method == "student_id":
             voter_record = VoterRecord.query.filter_by(
                 method="student_id",
