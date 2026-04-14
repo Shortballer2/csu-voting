@@ -12,6 +12,7 @@
         <form method="post">
             {% if questions %}
                 {% for question in questions %}
+                {% set question_index = loop.index0 %}
                 <div class="mb-4 vote-question-card" data-question-index="{{ loop.index0 }}" data-max-selections="{{ question.max_selections }}" {% if question.show_if %}data-show-if-question="{{ question.show_if.question_number - 1 }}" data-show-if-option="{{ question.show_if.option }}"{% endif %}>
                     <h5>{{ loop.index }}. {{ question.prompt }}</h5>
                     <p class="text-muted">Select up to {{ question.max_selections }} option(s).</p>
@@ -20,15 +21,15 @@
                     {% endif %}
                     {% for option in question.options %}
                     <div class="form-check fs-5 my-2">
-                        <input class="form-check-input" type="checkbox" name="question_{{ loop.parent.index0 }}_candidates" value="{{ option }}" id="question-{{ loop.parent.index0 }}-option-{{ loop.index }}">
-                        <label class="form-check-label" for="question-{{ loop.parent.index0 }}-option-{{ loop.index }}">
+                        <input class="form-check-input" type="checkbox" name="question_{{ question_index }}_candidates" value="{{ option }}" id="question-{{ question_index }}-option-{{ loop.index }}">
+                        <label class="form-check-label" for="question-{{ question_index }}-option-{{ loop.index }}">
                             {{ option }}
                         </label>
                     </div>
                     {% endfor %}
                     <div class="mt-2">
-                        <label for="question_{{ loop.index0 }}_write_in" class="form-label fw-bold">Write-in (Optional)</label>
-                        <input type="text" class="form-control" name="question_{{ loop.index0 }}_write_in" id="question_{{ loop.index0 }}_write_in" placeholder="Enter a name">
+                        <label for="question_{{ question_index }}_write_in" class="form-label fw-bold">Write-in (Optional)</label>
+                        <input type="text" class="form-control" name="question_{{ question_index }}_write_in" id="question_{{ question_index }}_write_in" placeholder="Enter a name">
                     </div>
                 </div>
                 <hr>
