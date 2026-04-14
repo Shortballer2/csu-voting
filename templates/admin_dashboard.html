@@ -231,6 +231,11 @@
                 <button type="submit" class="btn btn-warning">Clear has_voted Flags</button>
             </div>
         </form>
+        <hr>
+        <p class="text-muted mb-2">Reset the vote tally if an election needs to be rerun.</p>
+        <form method="post" action="{{ url_for('reset_vote_results') }}">
+            <button type="submit" class="btn btn-danger">Reset Vote Results</button>
+        </form>
     </div>
 </div>
 
