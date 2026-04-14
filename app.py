@@ -821,6 +821,14 @@ def reset_voter_records():
         flash(f"Reset {updated_count} voter record(s) across all years.", "success")
     return redirect(url_for("admin_dashboard"))
 
+@app.route("/admin/results/reset", methods=["POST"])
+@admin_login_required
+def reset_vote_results():
+    deleted_count = Vote.query.delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"Deleted {deleted_count} recorded vote(s). Results are now reset.", "success")
+    return redirect(url_for("admin_dashboard"))
+
 @app.route("/admin/ballot/update", methods=["POST"])
 @admin_login_required
 def update_ballot():
