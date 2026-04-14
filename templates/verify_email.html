@@ -5,7 +5,7 @@
 <div class="card content-card">
     <div class="card-body">
         <h1 class="card-title text-center mb-4">Voter Verification</h1>
-        <p class="text-center text-muted">Choose your ballot and enter your name, student email, and student ID exactly as listed on the eligible voter roster.</p>
+        <p class="text-center text-muted">Choose your ballot and enter your name with your selected verification details exactly as listed on the eligible voter roster.</p>
         <form method="post">
             <div class="mb-3">
                 <label for="year" class="form-label">Election / Ballot</label>
@@ -27,7 +27,7 @@
                     <option value="student_id">Student ID Number</option>
                 </select>
             </div>
-            <div class="mb-3">
+            <div class="mb-3" id="email-group">
                 <label for="email" class="form-label">Student Email Address</label>
                 <div class="input-group">
                     <input type="text" class="form-control" id="email" name="email" placeholder="firstnamemiddleinitiallastname" pattern="[A-Za-z]+[A-Za-z][A-Za-z]+">
@@ -46,13 +46,18 @@
 </div>
 <script>
     const methodSelect = document.getElementById("verification_method");
+    const emailGroup = document.getElementById("email-group");
     const emailInput = document.getElementById("email");
     const studentIdGroup = document.getElementById("student-id-group");
     const studentIdInput = document.getElementById("student_id_number");
 
     function toggleMethodFields() {
         const isEmail = methodSelect.value === "email";
+        emailGroup.classList.toggle("d-none", !isEmail);
         emailInput.required = isEmail;
+        if (!isEmail) {
+            emailInput.value = "";
+        }
         studentIdInput.required = true;
         studentIdGroup.classList.remove("d-none");
     }
