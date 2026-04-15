@@ -59,10 +59,10 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        Eligible Voter Roster Upload (PDF)
+        Eligible Voter Roster Upload (Excel)
     </div>
     <div class="card-body">
-        <p class="text-muted">Upload a text-based PDF with rows containing voter name, CSU email, and 6-digit student ID.</p>
+        <p class="text-muted">Upload an Excel spreadsheet (.xlsx or .xlsm) containing voter name and CSU student email.</p>
         <form class="row g-3 align-items-end" method="post" action="{{ url_for('upload_eligible_voters') }}" enctype="multipart/form-data">
             <div class="col-md-5">
                 <label for="roster_year" class="form-label">Election / Ballot</label>
@@ -73,8 +73,8 @@
                 </select>
             </div>
             <div class="col-md-5">
-                <label for="eligible_voters_pdf" class="form-label">Roster PDF</label>
-                <input type="file" name="eligible_voters_pdf" id="eligible_voters_pdf" class="form-control" accept="application/pdf" required>
+                <label for="eligible_voters_excel" class="form-label">Roster Spreadsheet</label>
+                <input type="file" name="eligible_voters_excel" id="eligible_voters_excel" class="form-control" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12" required>
             </div>
             <div class="col-md-2 d-grid">
                 <button type="submit" class="btn btn-success">Upload</button>
@@ -184,13 +184,9 @@
                 <div class="col-md-6">
                     <label for="email" class="form-label">Student Email</label>
                     <div class="input-group">
-                        <input type="text" name="email" id="email" class="form-control" placeholder="firstnamemiddleinitiallastname" pattern="[A-Za-z]+[A-Za-z][A-Za-z]+">
+                        <input type="text" name="email" id="email" class="form-control" placeholder="abstudentlastname" pattern="[A-Za-z]{2}[A-Za-z]+">
                         <span class="input-group-text">@student.csuniv.edu</span>
                     </div>
-                </div>
-                <div class="col-md-6">
-                    <label for="student_id_number" class="form-label">Student ID Number (optional alternative)</label>
-                    <input type="text" name="student_id_number" id="student_id_number" class="form-control" placeholder="6 digits" pattern="\d{6}" inputmode="numeric" maxlength="6" autocomplete="off">
                 </div>
                 <div class="col-md-6">
                     <label for="manual_vote_year" class="form-label">Election / Ballot</label>
