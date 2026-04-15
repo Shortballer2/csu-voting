@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 from models import db, Student, Vote, VoterRecord, EligibleVoter
 from sqlalchemy import func
 from pypdf import PdfReader
+import zipfile
+import xml.etree.ElementTree as ET
 
 load_dotenv("csu-voting.env", override=True)
 
@@ -84,8 +86,7 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp-mail.outlook.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
-STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]+[a-z][a-z]+@student\.csuniv\.edu$")
-STUDENT_ID_PATTERN = re.compile(r"^\d{6}$")
+STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]{2}[a-z]+@student\.csuniv\.edu$")
 STUDENT_EMAIL_DOMAIN = "@student.csuniv.edu"
 
 # --- Helper Functions ---
@@ -182,12 +183,11 @@ def normalize_student_email(value):
     email_value = (value or "").strip().lower()
     if not email_value:
         return ""
-    if "@" not in email_value:
-        email_value = f"{email_value}{STUDENT_EMAIL_DOMAIN}"
-    return email_value
-
-def normalize_student_id(value):
-    return re.sub(r"\D", "", (value or "").strip())
+    local_part = email_value.split("@", 1)[0]
+    local_part = re.sub(r"[^a-z]", "", local_part)
+    if not local_part:
+        return ""
+    return f"{local_part}{STUDENT_EMAIL_DOMAIN}"
 
 def normalize_name(value):
     return " ".join((value or "").strip().lower().split())
@@ -205,13 +205,12 @@ def parse_eligible_voters_pdf(file_storage):
             if not line:
                 continue
             columns = [col.strip() for col in re.split(r"[,\t|]+", line) if col.strip()]
-            if len(columns) < 3:
+            if len(columns) < 2:
                 continue
             email = next((col for col in columns if STUDENT_EMAIL_PATTERN.match(normalize_student_email(col))), "")
-            student_id = next((normalize_student_id(col) for col in columns if STUDENT_ID_PATTERN.match(normalize_student_id(col))), "")
-            if not email or not student_id:
+            if not email:
                 continue
-            name_parts = [col for col in columns if col != email and normalize_student_id(col) != student_id]
+            name_parts = [col for col in columns if col != email]
             full_name = " ".join(name_parts).strip()
             if not full_name:
                 continue
@@ -219,9 +218,89 @@ def parse_eligible_voters_pdf(file_storage):
                 {
                     "full_name": full_name,
                     "email": normalize_student_email(email),
-                    "student_id": student_id,
                 }
             )
+    return parsed_rows
+
+
+def parse_eligible_voters_excel(file_storage):
+    file_bytes = file_storage.read()
+    with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+        shared_strings = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared_root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+            namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+            for item in shared_root.findall("x:si", namespace):
+                text_parts = [t.text or "" for t in item.findall(".//x:t", namespace)]
+                shared_strings.append("".join(text_parts))
+
+        workbook_root = ET.fromstring(archive.read("xl/workbook.xml"))
+        ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main", "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
+        first_sheet = workbook_root.find("x:sheets/x:sheet", ns)
+        if first_sheet is None:
+            return []
+        sheet_rel_id = first_sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+
+        rels_root = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        rel_ns = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
+        target = None
+        for rel in rels_root.findall("r:Relationship", rel_ns):
+            if rel.attrib.get("Id") == sheet_rel_id:
+                target = rel.attrib.get("Target")
+                break
+        if not target:
+            return []
+
+        sheet_path = f"xl/{target}" if not target.startswith("xl/") else target
+        sheet_root = ET.fromstring(archive.read(sheet_path))
+
+    namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
+    def cell_value(cell):
+        cell_type = cell.attrib.get("t")
+        value_node = cell.find("x:v", namespace)
+        if value_node is None:
+            inline_node = cell.find("x:is/x:t", namespace)
+            return (inline_node.text or "").strip() if inline_node is not None else ""
+        raw_value = value_node.text or ""
+        if cell_type == "s":
+            try:
+                return shared_strings[int(raw_value)].strip()
+            except (ValueError, IndexError):
+                return ""
+        return raw_value.strip()
+
+    def normalize_header(value):
+        return re.sub(r"[^a-z]", "", str(value or "").strip().lower())
+
+    parsed_rows = []
+    rows_data = []
+    for row in sheet_root.findall(".//x:sheetData/x:row", namespace):
+        row_values = []
+        for cell in row.findall("x:c", namespace):
+            row_values.append(cell_value(cell))
+        rows_data.append(row_values)
+
+    if not rows_data:
+        return []
+
+    headers = [normalize_header(cell) for cell in rows_data[0]]
+    name_index = next((i for i, h in enumerate(headers) if h in {"name", "fullname", "fulllegalname", "studentname"}), None)
+    email_index = next((i for i, h in enumerate(headers) if h in {"email", "studentemail", "csuemail"}), None)
+    start_row = 1
+
+    if name_index is None or email_index is None:
+        name_index = 0
+        email_index = 1
+        start_row = 0
+
+    for row in rows_data[start_row:]:
+        full_name = str(row[name_index] or "").strip() if name_index < len(row) else ""
+        email = normalize_student_email(str(row[email_index] or "")) if email_index < len(row) else ""
+        if not full_name or not STUDENT_EMAIL_PATTERN.match(email):
+            continue
+        parsed_rows.append({"full_name": full_name, "email": email})
+
     return parsed_rows
 
 
@@ -351,27 +430,19 @@ def verify_email():
     elections = load_candidates()
     if request.method == "POST":
         selected_election = request.form.get("year", "").strip()
-        verification_method = request.form.get("verification_method", "email")
         if selected_election not in elections:
             flash("Please choose a valid ballot.", "warning")
-            return redirect(url_for("verify_email"))
-        if verification_method not in {"email", "student_id"}:
-            flash("Please choose a valid verification method.", "warning")
             return redirect(url_for("verify_email"))
         session["year"] = selected_election
         full_name = (request.form.get("full_name") or "").strip()
         normalized_full_name = normalize_name(full_name)
         email = normalize_student_email(request.form.get("email"))
-        student_id_number = normalize_student_id(request.form.get("student_id_number"))
         if len(normalized_full_name) < 3:
             flash("Enter your full name exactly as listed in the voter roster.", "danger")
             return redirect(url_for("verify_email"))
-        if not STUDENT_ID_PATTERN.match(student_id_number):
-            flash("Enter a valid student ID number (6 digits).", "danger")
-            return redirect(url_for("verify_email"))
-        if verification_method == "email" and not STUDENT_EMAIL_PATTERN.match(email):
+        if not STUDENT_EMAIL_PATTERN.match(email):
             flash(
-                "Use your CSU student email in this format: firstnamemiddleinitiallastname@student.csuniv.edu.",
+                "Use your CSU student email in this format: firstinitialmiddleinitiallastname@student.csuniv.edu.",
                 "danger",
             )
             return redirect(url_for("verify_email"))
@@ -382,37 +453,13 @@ def verify_email():
             is not None
         )
         if roster_exists:
-            roster_filters = {
-                "year": selected_election,
-                "student_id": student_id_number,
-            }
-            if verification_method == "email":
-                roster_filters["email"] = email
-            eligible_voter = EligibleVoter.query.filter_by(**roster_filters).first()
+            eligible_voter = EligibleVoter.query.filter_by(
+                year=selected_election,
+                email=email,
+            ).first()
             if not eligible_voter or normalize_name(eligible_voter.full_name) != normalized_full_name:
                 flash("Your details could not be verified against the eligible voter list.", "danger")
                 return redirect(url_for("verify_email"))
-        if verification_method == "student_id":
-            voter_record = VoterRecord.query.filter_by(
-                method="student_id",
-                identifier=student_id_number,
-                year=selected_election,
-            ).first()
-            if voter_record and voter_record.has_voted:
-                flash("This student ID number has already been used to vote.", "warning")
-                return redirect(url_for("verify_email"))
-            if not voter_record:
-                voter_record = VoterRecord(
-                    method="student_id",
-                    identifier=student_id_number,
-                    year=session["year"],
-                )
-                db.session.add(voter_record)
-                db.session.commit()
-            session["voter_record_id"] = voter_record.id
-            session.pop("otp", None)
-            session.pop("email", None)
-            return redirect(url_for("vote"))
         student = Student.query.filter_by(email=email).first()
         if not student:
             student = Student(email=email, year=session["year"])
@@ -550,27 +597,33 @@ def admin_dashboard():
 @admin_login_required
 def upload_eligible_voters():
     year = request.form.get("year", "").strip()
-    pdf_file = request.files.get("eligible_voters_pdf")
+    excel_file = request.files.get("eligible_voters_excel")
     if not year:
         flash("Election / ballot is required.", "danger")
         return redirect(url_for("admin_dashboard"))
-    if not pdf_file or not pdf_file.filename.lower().endswith(".pdf"):
-        flash("Please upload a PDF file.", "danger")
+    if not excel_file:
+        flash("Please upload an Excel file.", "danger")
         return redirect(url_for("admin_dashboard"))
+
+    filename = (excel_file.filename or "").lower()
+    if not filename.endswith((".xlsx", ".xlsm")):
+        flash("Please upload a valid Excel file (.xlsx or .xlsm).", "danger")
+        return redirect(url_for("admin_dashboard"))
+
     try:
-        parsed_rows = parse_eligible_voters_pdf(pdf_file)
+        parsed_rows = parse_eligible_voters_excel(excel_file)
     except Exception:
-        flash("Could not read the PDF. Please upload a text-based PDF roster.", "danger")
+        flash("Could not read the spreadsheet. Ensure it includes voter name and email columns.", "danger")
         return redirect(url_for("admin_dashboard"))
     if not parsed_rows:
-        flash("No valid voters were found. Expected rows with name, email, and 6-digit student ID.", "warning")
+        flash("No valid voters were found. Expected rows with voter name and CSU email.", "warning")
         return redirect(url_for("admin_dashboard"))
 
     EligibleVoter.query.filter_by(year=year).delete(synchronize_session=False)
     seen = set()
     inserted = 0
     for row in parsed_rows:
-        key = (row["email"], row["student_id"])
+        key = (normalize_name(row["full_name"]), row["email"])
         if key in seen:
             continue
         seen.add(key)
@@ -579,7 +632,6 @@ def upload_eligible_voters():
                 year=year,
                 full_name=row["full_name"],
                 email=row["email"],
-                student_id=row["student_id"],
             )
         )
         inserted += 1
@@ -711,7 +763,6 @@ def delete_candidate():
 @admin_login_required
 def manual_vote():
     email = normalize_student_email(request.form.get("email"))
-    student_id_number = normalize_student_id(request.form.get("student_id_number"))
     year = request.form.get("year")
     
     if not year:
@@ -721,8 +772,8 @@ def manual_vote():
     if year not in candidates:
         flash("Please choose a valid election/ballot.", "danger")
         return redirect(url_for("admin_dashboard"))
-    if not email and not student_id_number:
-        flash("Either student email or student ID number is required.", "danger")
+    if not email:
+        flash("Student email is required.", "danger")
         return redirect(url_for("admin_dashboard"))
 
     # Get checked candidates from the form
@@ -749,19 +800,15 @@ def manual_vote():
         flash("You must select at least one option to vote.", "warning")
         return redirect(url_for("admin_dashboard"))
 
-    identifier = student_id_number or email
-    method = "student_id" if student_id_number else "email"
-    if method == "student_id" and not STUDENT_ID_PATTERN.match(student_id_number):
-        flash("Student ID number must be 6 digits.", "danger")
+    method = "email"
+    identifier = email
+    if not STUDENT_EMAIL_PATTERN.match(email):
+        flash("Enter a valid CSU student email format: firstinitialmiddleinitiallastname@student.csuniv.edu.", "danger")
         return redirect(url_for("admin_dashboard"))
-    if method == "email":
-        if not STUDENT_EMAIL_PATTERN.match(email):
-            flash("Enter a valid CSU student email.", "danger")
-            return redirect(url_for("admin_dashboard"))
-        student = Student.query.filter_by(email=email).first()
-        if not student:
-            student = Student(email=email, year=year)
-            db.session.add(student)
+    student = Student.query.filter_by(email=email).first()
+    if not student:
+        student = Student(email=email, year=year)
+        db.session.add(student)
 
     voter_record = VoterRecord.query.filter_by(method=method, identifier=identifier, year=year).first()
     if voter_record and voter_record.has_voted:

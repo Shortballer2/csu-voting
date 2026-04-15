@@ -28,4 +28,4 @@ class EligibleVoter(db.Model):
     year = db.Column(db.String(80), nullable=False)
     full_name = db.Column(db.String(160), nullable=False)
     email = db.Column(db.String(120), nullable=False)
-    student_id = db.Column(db.String(20), nullable=False)
+    student_id = db.Column(db.String(20), nullable=True)
