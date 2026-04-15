@@ -265,31 +265,72 @@ def parse_eligible_voters_excel(file_storage):
     def normalize_header(value):
         return re.sub(r"[^a-z]", "", str(value or "").strip().lower())
 
+    def column_letters_to_index(column_letters):
+        index = 0
+        for letter in column_letters:
+            if not letter.isalpha():
+                continue
+            index = index * 26 + (ord(letter.upper()) - ord("A") + 1)
+        return max(index - 1, 0)
+
     parsed_rows = []
     rows_data = []
     for row in sheet_root.findall(".//x:sheetData/x:row", namespace):
-        row_values = []
+        row_values = {}
         for cell in row.findall("x:c", namespace):
-            row_values.append(cell_value(cell))
+            cell_ref = cell.attrib.get("r", "")
+            match = re.match(r"([A-Za-z]+)", cell_ref)
+            col_index = column_letters_to_index(match.group(1)) if match else len(row_values)
+            row_values[col_index] = cell_value(cell)
         rows_data.append(row_values)
 
     if not rows_data:
         return []
 
-    headers = [normalize_header(cell) for cell in rows_data[0]]
-    name_index = next((i for i, h in enumerate(headers) if h in {"name", "fullname", "fulllegalname", "studentname"}), None)
+    first_row = rows_data[0]
+    max_col_index = max((max(row.keys()) for row in rows_data if row), default=-1)
+    headers = [normalize_header(first_row.get(i, "")) for i in range(max_col_index + 1)]
+
     email_index = next((i for i, h in enumerate(headers) if h in {"email", "studentemail", "csuemail"}), None)
+    name_index = next((i for i, h in enumerate(headers) if h in {"name", "fullname", "fulllegalname", "studentname"}), None)
+    first_name_index = next((i for i, h in enumerate(headers) if h in {"firstname", "givenname", "first"}), None)
+    last_name_index = next((i for i, h in enumerate(headers) if h in {"lastname", "surname", "last"}), None)
     start_row = 1
 
-    if name_index is None or email_index is None:
-        name_index = 0
-        email_index = 1
-        start_row = 0
+    if email_index is None:
+        sample_rows = rows_data[: min(len(rows_data), 50)]
+        candidate_counts = {}
+        for row in sample_rows:
+            for index, value in row.items():
+                normalized_email = normalize_student_email(value)
+                if STUDENT_EMAIL_PATTERN.match(normalized_email):
+                    candidate_counts[index] = candidate_counts.get(index, 0) + 1
+        if candidate_counts:
+            email_index = max(candidate_counts, key=candidate_counts.get)
+            start_row = 0
+
+    if email_index is None:
+        return []
+
+    if name_index is None and (first_name_index is None or last_name_index is None):
+        ordered_indexes = sorted({i for row in rows_data[: min(len(rows_data), 50)] for i in row.keys() if i != email_index})
+        if len(ordered_indexes) >= 2:
+            last_name_index, first_name_index = ordered_indexes[0], ordered_indexes[1]
+            start_row = 0
 
     for row in rows_data[start_row:]:
-        full_name = str(row[name_index] or "").strip() if name_index < len(row) else ""
-        email = normalize_student_email(str(row[email_index] or "")) if email_index < len(row) else ""
-        if not full_name or not STUDENT_EMAIL_PATTERN.match(email):
+        email = normalize_student_email(str(row.get(email_index, "")))
+        if not STUDENT_EMAIL_PATTERN.match(email):
+            continue
+
+        if name_index is not None:
+            full_name = str(row.get(name_index, "")).strip()
+        else:
+            first_name = str(row.get(first_name_index, "")).strip() if first_name_index is not None else ""
+            last_name = str(row.get(last_name_index, "")).strip() if last_name_index is not None else ""
+            full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+
+        if not full_name:
             continue
         parsed_rows.append({"full_name": full_name, "email": email})
 
