@@ -1,13 +1,9 @@
 import os
 import json
-import random
-import smtplib
-import ssl
 import re
 import io
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from email.mime.text import MIMEText
 from datetime import datetime
 from functools import wraps
 from dotenv import load_dotenv
@@ -80,10 +76,6 @@ with app.app_context():
 
 # --- Environment Variables & Constants ---
 VOTING_PASSWORD = os.getenv("VOTING_PASSWORD")
-EMAIL_USER = os.getenv("EMAIL_USER")
-EMAIL_PASS = os.getenv("EMAIL_PASS")
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp-mail.outlook.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "password")
 STUDENT_EMAIL_PATTERN = re.compile(r"^[a-z]{2}[a-z]+@student\.csuniv\.edu$")
@@ -374,21 +366,6 @@ def validate_max_selections(value, default=10):
     except (TypeError, ValueError):
         return default
 
-def send_otp_email(to_email, otp):
-    msg = MIMEText(f"Your CSU Voting OTP code is: {otp}")
-    msg["Subject"] = "CSU Voting OTP Code"
-    msg["From"] = EMAIL_USER
-    msg["To"] = to_email
-    if not EMAIL_USER or not EMAIL_PASS:
-        raise RuntimeError("Missing EMAIL_USER or EMAIL_PASS for SMTP authentication.")
-    ssl_context = ssl.create_default_context()
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.ehlo()
-        server.starttls(context=ssl_context)
-        server.ehlo()
-        server.login(EMAIL_USER, EMAIL_PASS)
-        server.send_message(msg)
-
 # --- Decorators ---
 def login_required(f):
     @wraps(f)
@@ -477,30 +454,10 @@ def verify_email():
             voter_record = VoterRecord(method="email", identifier=email, year=session["year"])
             db.session.add(voter_record)
             db.session.commit()
-        otp = str(random.randint(100000, 999999))
-        session["otp"] = otp
         session["email"] = email
         session["voter_record_id"] = voter_record.id
-        try:
-            send_otp_email(email, otp)
-            return redirect(url_for("otp"))
-        except Exception as e:
-            flash("Error sending email. Please try again.", "danger")
-            print("Email error:", e)
-            return redirect(url_for("verify_email"))
+        return redirect(url_for("vote"))
     return render_template("verify_email.html", elections=list(elections.keys()))
-
-@app.route("/otp", methods=["GET", "POST"])
-@login_required
-def otp():
-    if request.method == "POST":
-        entered = request.form["otp"].strip()
-        if entered == session.get("otp"):
-            return redirect(url_for("vote"))
-        else:
-            flash("Invalid OTP. Try again.", "danger")
-            return redirect(url_for("otp"))
-    return render_template("otp.html")
 
 @app.route("/vote", methods=["GET", "POST"])
 @login_required
@@ -545,7 +502,6 @@ def vote():
         db.session.commit()
         session.pop("email", None)
         session.pop("year", None)
-        session.pop("otp", None)
         session.pop("voter_record_id", None)
         return render_template("success.html")
     return render_template(
